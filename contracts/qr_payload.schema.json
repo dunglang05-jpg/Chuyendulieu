@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PTP/1 QR session payload (decoded d= parameter)",
+  "type": "object",
+  "required": [
+    "v",
+    "sid",
+    "exp",
+    "ep",
+    "fp",
+    "role",
+    "pf"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sid": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{22}$"
+    },
+    "exp": {
+      "type": "integer"
+    },
+    "ep": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "fp": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "role": {
+      "enum": [
+        "sender",
+        "receiver"
+      ]
+    },
+    "pf": {
+      "enum": [
+        "android",
+        "ios",
+        "desktop_reference"
+      ]
+    },
+    "f": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "maxLength": 32
+      }
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Phone Transfer Pro Transfer Manifest (PTP/1)",
+  "type": "object",
+  "required": [
+    "t",
+    "transferId",
+    "files",
+    "totalBytes"
+  ],
+  "properties": {
+    "t": {
+      "const": "manifest"
+    },
+    "transferId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{22}$"
+    },
+    "totalBytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "files": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "required": [
+          "i",
+          "path",
+          "size",
+          "category"
+        ],
+        "properties": {
+          "i": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1099511627776
+          },
+          "mime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mtime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "unix milliseconds"
+          },
+          "category": {
+            "enum": [
+              "contacts",
+              "photos",
+              "videos",
+              "audio",
+              "documents",
+              "calendar"
+            ]
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "optional in v1; authoritative hash travels in file_end"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

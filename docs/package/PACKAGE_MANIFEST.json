@@ -1,0 +1,32 @@
+{
+  "product": "Phone Transfer Pro",
+  "package_version": "2.0",
+  "scope": [
+    "Android-to-Android",
+    "Android-to-iPhone",
+    "iPhone-to-Android",
+    "iPhone-to-iPhone"
+  ],
+  "artifact_type": "implementation_prompt_and_documentation_scaffold",
+  "is_complete_application": false,
+  "files": [
+    "CLAUDE.md",
+    "CLAUDE.md",
+    "PACKAGE_MANIFEST.json",
+    "README.md",
+    "START_HERE_VI.md",
+    "contracts/capability.schema.json",
+    "contracts/transfer_manifest.schema.json",
+    "docs/01_PRODUCT_SRS.md",
+    "docs/02_SYSTEM_ARCHITECTURE.md",
+    "docs/03_PLATFORM_CAPABILITY_MATRIX.md",
+    "docs/04_PROTOCOL_AND_DATA_MODEL.md",
+    "docs/05_SECURITY_PRIVACY.md",
+    "docs/06_QA_ACCEPTANCE.md",
+    "docs/07_ROADMAP.md",
+    "docs/08_REPOSITORY_RESEARCH.md",
+    "prompts/MASTER_PROMPT_CLAUDE_CODE.md",
+    "research/REPOSITORY_URLS.md",
+    "starter/IMPLEMENTATION_CHECKLIST.md"
+  ]
+}

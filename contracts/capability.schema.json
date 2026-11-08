@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Phone Transfer Pro Capability (v1.1)",
+  "type": "object",
+  "required": [
+    "protocolVersion",
+    "platform",
+    "role",
+    "appVersion",
+    "categories",
+    "transports"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+$"
+    },
+    "platform": {
+      "enum": [
+        "android",
+        "ios",
+        "desktop_reference"
+      ]
+    },
+    "role": {
+      "enum": [
+        "sender",
+        "receiver",
+        "both"
+      ]
+    },
+    "osVersion": {
+      "type": "string"
+    },
+    "appVersion": {
+      "type": "string"
+    },
+    "categories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "export",
+          "import",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "export": {
+            "type": "boolean"
+          },
+          "import": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "supported",
+              "permission_required",
+              "official_flow",
+              "partial",
+              "unsupported",
+              "oem_authorized"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "transports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "freeStorageBytes": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "backgroundTransfer": {
+      "type": "boolean"
+    },
+    "permissions": {
+      "type": "object",
+      "description": "category id -> granted|limited|denied|not_determined|not_applicable",
+      "additionalProperties": {
+        "enum": [
+          "granted",
+          "limited",
+          "denied",
+          "not_determined",
+          "not_applicable"
+        ]
+      }
+    },
+    "maxFileSizeBytes": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "backgroundConstraints": {
+      "enum": [
+        "none",
+        "foreground_service",
+        "ios_foreground_only",
+        "unknown"
+      ]
+    },
+    "cryptoSuites": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

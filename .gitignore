@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+ptp-inbox/
+app/build/
+app/.dart_tool/
+app/.flutter-plugins*
+app/ios/Pods/
+app/android/.gradle/
+app/android/local.properties
+*.jks
+*.keystore
