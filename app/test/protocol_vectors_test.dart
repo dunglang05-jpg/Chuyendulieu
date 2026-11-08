@@ -32,7 +32,8 @@ void main() {
   });
 
   test('expired QR is rejected', () {
-    expect(() => QrPayload.parse(v['qrUri'] as String),
+    // Vector expires 2030-01-01; parse "after" that instant.
+    expect(() => QrPayload.parse(v['qrUri'] as String, now: DateTime.utc(2031)),
         throwsA(isA<PtpException>().having((e) => e.code, 'code', PtpErrorCode.pairingExpired)));
   });
 

@@ -57,8 +57,8 @@ class PtpChannel {
 
   Future<void> close() async {
     try {
-      await reader.cancel();
-      await socket.close();
+      await reader.cancel().timeout(const Duration(seconds: 2));
+      await socket.close().timeout(const Duration(seconds: 2));
     } catch (_) {}
     socket.destroy();
   }
@@ -141,10 +141,15 @@ class PtpHost {
     lastActivity = DateTime.now();
   }
 
+  /// Never waits on listeners: awaiting StreamController.close() while the StreamIterator is paused
+  /// between moveNext() calls hangs forever (found by CI).
   Future<void> close() async {
     destroyed = true;
-    await _server?.close();
-    if (!_channels.isClosed) await _channels.close();
+    try {
+      await _server?.close().timeout(const Duration(seconds: 2));
+    } catch (_) {}
+    if (!_channels.isClosed) unawaited(_channels.close());
+    unawaited(_chIt?.cancel());
   }
 
   Future<void> _handle(SecureSocket socket) async {

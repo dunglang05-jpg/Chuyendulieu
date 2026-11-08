@@ -129,8 +129,11 @@ void main() {
       if (wire >= cancelAt) jc.socket.destroy(); // simulate Wi-Fi loss
     });
     final recvF = runReceiver(hc, storeAt(tmp));
-    await expectLater(recvF, throwsA(isA<PtpException>()));
-    await expectLater(sendF, throwsA(anything));
+    // Capture both outcomes up front so neither error escapes as an unhandled async error.
+    Future<Object?> settle(Future<Object?> f) => f.then<Object?>((r) => r, onError: (Object e) => e);
+    final first = await Future.wait([settle(recvF), settle(sendF)]);
+    expect(first[0], isA<PtpException>());
+    expect(first[1], isNot(isA<TransferReport>()));
     h.release();
     final jf = joinSession(_loopbackUri(h), device: dev, confirm: yes, capsForRole: testCaps, resumeToken: jc.resumeToken);
     final hc2 = await h.accept();
