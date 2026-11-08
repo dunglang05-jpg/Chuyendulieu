@@ -146,9 +146,11 @@ final class ContactsAdapter {
   }
 
   /// Adds contacts that do not already exist (same full name AND a shared phone number or e-mail).
-  func importVCard(url: URL) throws -> [String: Any] {
+  /// Without Contacts permission the .vcf is kept in Files (status saved_to_files) so nothing is lost and the
+  /// user can open it later with the Contacts app.
+  func importVCard(url: URL, files: FilesAdapter) throws -> [String: Any] {
     guard Self.permissionState() == "granted" else {
-      return ["status": "failed", "message": "PERMISSION_DENIED"]
+      return try files.saveToFiles(url: url, category: "contacts", name: url.lastPathComponent, reason: "PERMISSION_DENIED")
     }
     let incoming = try CNContactVCardSerialization.contacts(with: Data(contentsOf: url))
     let store = CNContactStore()

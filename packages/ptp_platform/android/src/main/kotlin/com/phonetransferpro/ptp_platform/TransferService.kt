@@ -43,6 +43,14 @@ class TransferService : Service() {
         return START_NOT_STICKY
     }
 
+    /**
+     * Android 15+: dataSync foreground services get ~6 h per 24 h. When the system calls this we must stop
+     * within seconds or the app crashes. The Dart side sees the socket drop and offers resume later.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        stopSelf()
+    }
+
     override fun onDestroy() {
         wake?.takeIf { it.isHeld }?.release()
         wifi?.takeIf { it.isHeld }?.release()

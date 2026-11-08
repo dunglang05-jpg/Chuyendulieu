@@ -78,6 +78,12 @@ class S {
     'report_action': {'vi': '{n} mục cần bạn thao tác', 'en': '{n} items need your action'},
     'delete_partial': {'vi': 'Xóa dữ liệu tạm', 'en': 'Delete partial data'},
     'finish': {'vi': 'Xong', 'en': 'Done'},
+    'export_log': {'vi': 'Xuất log chẩn đoán (không chứa dữ liệu cá nhân)', 'en': 'Export diagnostic log (no personal data)'},
+    'log_saved': {'vi': 'Đã lưu log vào: {where}', 'en': 'Log saved to: {where}'},
+    'import_denied': {
+      'vi': 'Chưa có quyền ghi vào: {cats}. Các tệp này được giữ trong Tệp/Download thay vì Ảnh/Danh bạ.',
+      'en': 'No write access to: {cats}. These files were kept in Files/Downloads instead of Photos/Contacts.'
+    },
     'not_transferable': {'vi': 'Không chuyển được bằng ứng dụng này', 'en': 'Not transferable by this app'},
     'official_flows': {'vi': 'Ứng dụng nhắn tin — dùng cách chính thức', 'en': 'Messaging apps — use official methods'},
     'err_qr_expired': {'vi': 'Mã QR đã hết hạn. Tạo mã mới và quét lại.', 'en': 'QR expired. Create a new one and scan again.'},

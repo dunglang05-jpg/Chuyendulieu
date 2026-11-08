@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:ptp_platform/ptp_platform.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../app/controller.dart';
@@ -299,7 +300,15 @@ class _SelectView extends StatelessWidget {
                 },
         ),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (perm == 'denied') TextButton(onPressed: () => c.selectCategory(cat.id), child: Text(S.t('grant'))),
+          if (perm == 'denied') ...[
+            TextButton(onPressed: () => c.selectCategory(cat.id), child: Text(S.t('grant'))),
+            // P1-6: after a permanent denial the OS no longer shows the prompt; Settings is the only way back.
+            IconButton(
+              tooltip: S.t('open_settings'),
+              icon: const Icon(Icons.settings_rounded),
+              onPressed: PtpPlatform.openAppSettings,
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.info_outline_rounded),
             onPressed: () => showDialog<void>(
@@ -382,6 +391,7 @@ class _ReportView extends StatelessWidget {
       _ => (S.t('done_failed'), Icons.error_rounded),
     };
     final needsAction = c.imports.where((i) => i.status != 'imported').toList();
+    final deniedImport = c.importPermission.entries.where((e) => e.value == 'denied').map((e) => e.key).toList();
     return ListView(children: [
       Icon(icon, size: 64),
       const SizedBox(height: 8),
@@ -396,7 +406,23 @@ class _ReportView extends StatelessWidget {
         for (final i in needsAction.take(50))
           ListTile(dense: true, title: Text(i.name), subtitle: Text('${i.status} · ${i.location ?? ''} ${i.message ?? ''}')),
       ],
+      if (deniedImport.isNotEmpty)
+        ListTile(
+          leading: const Icon(Icons.lock_outline_rounded),
+          title: Text(S.t('import_denied', {'cats': deniedImport.join(', ')})),
+          trailing: TextButton(onPressed: PtpPlatform.openAppSettings, child: Text(S.t('open_settings'))),
+        ),
       const SizedBox(height: 16),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.bug_report_outlined),
+        label: Text(S.t('export_log')),
+        onPressed: () async {
+          final where = await c.exportLog();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(S.t('log_saved', {'where': where ?? '—'}))));
+          }
+        },
+      ),
       if (c.role == 'receiver' && (c.state == MigrationState.failed || c.state == MigrationState.cancelled))
         OutlinedButton(onPressed: c.deletePartials, child: Text(S.t('delete_partial'))),
       FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(S.t('finish'))),

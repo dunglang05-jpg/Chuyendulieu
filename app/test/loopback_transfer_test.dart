@@ -161,4 +161,35 @@ void main() {
     expect(tmp.listSync(recursive: true).where((e) => e.path.endsWith('evil.sh')), isEmpty);
     await h.close();
   });
+
+  test('receiver without enough space refuses before any data moves', () async {
+    final f = await makeFile(tmp, 'x.bin', 1000);
+    final (h, hc, jc) = await pair();
+    final store = ReceiverStore(p.join(tmp.path, 'inbox'), JsonCheckpointStore(tmp.path), (_) async => 10, reserve: 0);
+    Future<Object?> settle(Future<Object?> f) => f.then<Object?>((r) => r, onError: (Object e) => e);
+    final r = await Future.wait([settle(runReceiver(hc, store)), settle(runSender(jc, [FileSource(f.path, 'x.bin', 'documents')]))]);
+    for (final x in r) {
+      expect(x, isA<PtpException>().having((e) => e.code, 'code', PtpErrorCode.storageInsufficient));
+    }
+    expect(File(p.join(tmp.path, 'inbox/documents/x.bin')).existsSync(), isFalse);
+    await h.close();
+  });
+
+  test('cancel by the sender stops both sides and leaves no final file', () async {
+    final big = await makeFile(tmp, 'big.bin', 20 * 1024 * 1024);
+    final (h, hc, jc) = await pair();
+    final token = CancelToken();
+    Future<Object?> settle(Future<Object?> f) => f.then<Object?>((r) => r, onError: (Object e) => e);
+    final r = await Future.wait([
+      settle(runReceiver(hc, storeAt(tmp))),
+      settle(runSender(jc, [FileSource(big.path, 'big.bin', 'videos')], cancel: token, onProgress: (i, d, t, w) {
+        if (w > 5 * 1024 * 1024) token.cancel();
+      })),
+    ]);
+    for (final x in r) {
+      expect(x, isA<PtpException>().having((e) => e.code, 'code', PtpErrorCode.userCancelled));
+    }
+    expect(File(p.join(tmp.path, 'inbox/videos/big.bin')).existsSync(), isFalse);
+    await h.close();
+  });
 }

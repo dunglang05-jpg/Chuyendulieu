@@ -18,7 +18,7 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.phonetransferpro.ptp_platform'
-    compileSdk 34
+    compileSdk 36   // needed for Service.onTimeout(int,int) (API 35)
     defaultConfig { minSdk 29 }   // scoped storage + MediaStore.Downloads; see docs/STATUS.md
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

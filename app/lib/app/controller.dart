@@ -23,6 +23,7 @@ import '../core/session/session.dart';
 import '../core/transfer/engine.dart';
 import '../core/transfer/receiver_store.dart';
 import '../data/db.dart';
+import 'diag_log.dart';
 
 const appVersion = '0.1.0';
 
@@ -75,7 +76,9 @@ class MigrationController extends ChangeNotifier {
   MigrationController(this.db);
   final AppDatabase db;
 
-  final sm = MigrationStateMachine();
+  late final sm = MigrationStateMachine(
+      onTransition: (from, to, spec) => _log.event('transition', {'from': from, 'to': to, 'role': role}));
+  final DiagLog _log = DiagLog.instance;
   String role = 'sender'; // this device's data role
   ProbeResult? probe;
   PtpHost? host;
@@ -124,6 +127,10 @@ class MigrationController extends ChangeNotifier {
   Future<Capabilities> _caps(String forRole) async {
     probe = await PtpPlatform.probe();
     final pr = probe!;
+    try {
+      await _log.open(p.dirname(await PtpPlatform.inboxDir()));
+    } catch (_) {}
+    _log.event('probe', {'platform': pr.platform, 'os': pr.osVersion, 'model': pr.model, 'role': forRole, 'free': pr.freeBytes});
     return _capsCache = Capabilities(
       platform: pr.platform,
       role: forRole,
@@ -170,6 +177,7 @@ class MigrationController extends ChangeNotifier {
   // ------------------------------------------------------------------ pairing
   /// This device shows the QR. [myRole] is its data role.
   Future<void> showQr(String myRole) async {
+    await _closePrevious();
     _resetSession(myRole);
     try {
       _go(MigrationState.discovering);
@@ -179,6 +187,7 @@ class MigrationController extends ChangeNotifier {
       await h.start();
       host = h;
       qrUri = h.qr.toUri();
+      _log.event('qr_shown', {'endpoints': h.endpoints.length, 'role': myRole});
       qrExpires = h.expiresAt;
       notifyListeners();
       final ch = await h.accept();
@@ -192,6 +201,7 @@ class MigrationController extends ChangeNotifier {
   Future<void> joinQr(String uri) async {
     try {
       final qr = QrPayload.parse(uri);
+      await _closePrevious();
       _resetSession(qr.hostRole == 'receiver' ? 'sender' : 'receiver');
       joinedUri = uri;
       _go(MigrationState.discovering);
@@ -231,8 +241,10 @@ class MigrationController extends ChangeNotifier {
     }
     final perm = await PtpPlatform.requestPermission(category, forImport: false);
     permission[category] = perm;
+    _log.event('permission', {'category': category, 'perm': perm});
     if (perm == 'granted' || perm == 'limited') {
       selection[category] = await PtpPlatform.scan(category);
+      _log.event('scan', {'category': category, 'count': selection[category]!.length});
     }
     notifyListeners();
   }
@@ -267,6 +279,7 @@ class MigrationController extends ChangeNotifier {
       ..totalFiles = items.length
       ..totalBytes = selectedBytesHint;
     _go(MigrationState.preparing);
+    await _requestNotifications();
     await PtpPlatform.setTransferActive(true);
     _startDeviceMonitor();
     await _sendRemainingBatches();
@@ -334,6 +347,7 @@ class MigrationController extends ChangeNotifier {
           notifyListeners();
         });
         reports.add(rep);
+        _logBatch(rep);
         progress.doneFiles += rep.ok.length + rep.failed.length + rep.skipped.length;
         _batchIndex++;
       }
@@ -351,19 +365,29 @@ class MigrationController extends ChangeNotifier {
   Future<void> _receiveLoop() async {
     final inbox = await PtpPlatform.inboxDir();
     _store ??= ReceiverStore(inbox, SqliteCheckpointStore(db), PtpPlatform.freeBytes, reserve: storageReserve);
+    await _requestNotifications();
     await PtpPlatform.setTransferActive(true);
     _startDeviceMonitor();
     try {
       while (true) {
+        final base = _recvBase;
         final rep = await runReceiver(channel!, _store!, cancel: _cancel, approve: _approveCb,
             onProgress: (i, done, total, wire) {
           progress
             ..current = _store!.manifest.files[i].path
-            ..doneBytes = wire;
+            ..doneBytes = base + wire;
           notifyListeners();
         });
         reports.add(rep);
+        _recvBase += rep.wireBytes;
+        _logBatch(rep);
         _queueImports(rep);
+        if (rep.failed.isEmpty) {
+          // Committed files were already moved out; drop the empty partial dir and its checkpoint (P2-15).
+          try {
+            await _store!.deletePartials();
+          } catch (_) {}
+        }
         if (!rep.more) break;
       }
       _go(MigrationState.importing);
@@ -379,12 +403,21 @@ class MigrationController extends ChangeNotifier {
   }
 
   bool _approvedOnce = false;
+  final Set<String> _countedBatches = {};
+  int _recvBase = 0;
+
+  /// Receiver-side write permissions asked in this session: category -> granted|limited|denied.
+  final Map<String, String> importPermission = {};
 
   Future<bool> _approveCb(Manifest m, int needed) async {
-    progress
-      ..totalFiles += m.files.length
-      ..totalBytes += m.totalBytes;
+    if (_countedBatches.add(m.transferId)) {
+      progress
+        ..totalFiles += m.files.length
+        ..totalBytes += m.totalBytes;
+    }
+    _log.event('manifest', {'files': m.files.length, 'bytes': m.totalBytes, 'needed': needed});
     if (_approvedOnce) {
+      await _ensureImportPermissions(m);
       _go(MigrationState.transferring);
       return true; // later batches / resumes of an approved session
     }
@@ -395,8 +428,65 @@ class MigrationController extends ChangeNotifier {
     final ok = await _approve!.future;
     _approvedOnce = ok;
     pendingManifest = null;
+    if (ok) await _ensureImportPermissions(m);
     if (ok) _go(MigrationState.transferring);
     return ok;
+  }
+
+  /// P0-1: ask for write access on THIS (receiving) device before data arrives — iOS Photos add-only and
+  /// Contacts. Android needs none for its own MediaStore entries; contacts go through the system app.
+  /// A refusal is not fatal: files are kept in Files/Downloads and the report says so.
+  Future<void> _ensureImportPermissions(Manifest m) async {
+    final cats = {for (final f in m.files) f.category};
+    for (final c in const ['photos', 'videos', 'contacts']) {
+      if (!cats.contains(c) || importPermission.containsKey(c)) continue;
+      if (c == 'videos' && importPermission.containsKey('photos')) {
+        importPermission[c] = importPermission['photos']!; // same Photos permission on iOS
+        continue;
+      }
+      try {
+        importPermission[c] = await PtpPlatform.requestPermission(c, forImport: true);
+      } catch (_) {
+        importPermission[c] = 'denied';
+      }
+      _log.event('import_permission', {'category': c, 'perm': importPermission[c]});
+    }
+    notifyListeners();
+  }
+
+  /// Android 13+: the foreground-service notification is hidden unless the user allows notifications.
+  Future<void> _requestNotifications() async {
+    try {
+      final r = await PtpPlatform.requestPermission('notifications', forImport: false);
+      _log.event('permission', {'category': 'notifications', 'perm': r});
+    } catch (_) {}
+  }
+
+  void _logBatch(TransferReport r) => _log.event('batch_done', {
+        'role': role,
+        'files': r.manifest?.files.length,
+        'ok': r.ok.length,
+        'failed': r.failed.length,
+        'skipped': r.skipped.length,
+        'bytes': r.wireBytes,
+        'mbps': double.parse(r.mbPerSecond.toStringAsFixed(2)),
+        'more': r.more,
+      });
+
+  Future<void> _closePrevious() async {
+    try {
+      await channel?.close();
+      await host?.close();
+    } catch (_) {}
+  }
+
+  /// Copies the diagnostic log to Downloads (Android) / Files (iOS). Returns where it went.
+  Future<String?> exportLog() async {
+    final snap = await _log.snapshot();
+    if (snap == null) return null;
+    final ts = DateTime.now().toUtc().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+    final r = await PtpPlatform.importFile(snap, 'documents', 'chuyen-du-lieu-log-$ts.txt', 'text/plain');
+    return r.location;
   }
 
   void answerApprove(bool ok) {
@@ -414,6 +504,7 @@ class MigrationController extends ChangeNotifier {
         try {
           final r = await PtpPlatform.importFile(e.value, entry.category, p.basename(entry.path), entry.mime);
           imports.add(ImportOutcome(entry.category, entry.path, r.status, r.location, r.message));
+          _log.event('import', {'category': entry.category, 'status': r.status});
         } catch (_) {
           imports.add(ImportOutcome(entry.category, entry.path, 'failed', null, 'import error'));
         }
@@ -425,6 +516,7 @@ class MigrationController extends ChangeNotifier {
   // ------------------------------------------------------------------ resume
   Future<void> _reconnect() async {
     reconnecting = true;
+    _log.event('reconnect_start', {'role': role});
     _go(MigrationState.failed);
     notifyListeners();
     await channel?.close();
@@ -444,6 +536,7 @@ class MigrationController extends ChangeNotifier {
             ch = await joinSession(joinedUri!,
                 device: _device, confirm: _confirmCb, capsForRole: (_) => _lastCaps!, resumeToken: token);
           } on PtpException catch (e) {
+            _log.event('reconnect_attempt', {'code': e.code.wire});
             if (e.code != PtpErrorCode.peerTimeout && e.code != PtpErrorCode.sessionBusy) rethrow;
             await Future<void>.delayed(const Duration(seconds: 3));
           }
@@ -504,7 +597,9 @@ class MigrationController extends ChangeNotifier {
         final hot = st['thermal'] == 'serious' || st['thermal'] == 'critical';
         final pct = st['batteryPct'] as int? ?? -1;
         final low = pct >= 0 && pct < 10 && st['charging'] != true;
-        deviceWarning = hot ? 'thermal_pause' : (low ? 'battery_low' : null);
+        final warn = hot ? 'thermal_pause' : (low ? 'battery_low' : null);
+        if (warn != deviceWarning) _log.event('device', {'thermal': st['thermal'], 'battery': pct, 'charging': st['charging']});
+        deviceWarning = warn;
         if (hot && !pauseGate.isPaused) pauseGate.pause();
         if (!hot && pauseGate.isPaused && !userPaused) pauseGate.resume();
         notifyListeners();
@@ -519,6 +614,7 @@ class MigrationController extends ChangeNotifier {
   int get needsActionCount => imports.where((i) => i.status == 'requires_user_action' || i.status == 'failed').length;
 
   Future<void> _finish() async {
+    _log.event('finish', {'ok': okCount, 'failed': failedCount, 'skipped': skippedCount, 'role': role});
     final partial = failedCount > 0 || skippedCount > 0 || imports.any((i) => i.status == 'failed');
     if (sm.state == MigrationState.importing && !partial) {
       _go(MigrationState.completed);
@@ -533,6 +629,7 @@ class MigrationController extends ChangeNotifier {
 
   void _fail(PtpException e) {
     error = e;
+    _log.event('error', {'code': e.code.wire, 'state': sm.state, 'role': role});
     if (!sm.state.isTerminal) {
       _go(e.code == PtpErrorCode.userCancelled ? MigrationState.cancelled : MigrationState.failed);
     }
@@ -589,6 +686,9 @@ class MigrationController extends ChangeNotifier {
     _batchIds.clear();
     _batchIndex = 0;
     _approvedOnce = false;
+    _countedBatches.clear();
+    _recvBase = 0;
+    importPermission.clear();
     _sessionRow = null;
     _store = null;
     _cancel = CancelToken();

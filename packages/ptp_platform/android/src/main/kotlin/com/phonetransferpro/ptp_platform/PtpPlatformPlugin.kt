@@ -143,6 +143,9 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     }
 
     private fun permissionState(cat: String): String {
+        if (cat == "notifications") {
+            return if (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)) "granted" else "denied"
+        }
         if (cat == "contacts") return if (granted(Manifest.permission.READ_CONTACTS)) "granted" else "denied"
         val perms = mediaPermissions(cat)
         if (perms.isEmpty()) return "not_applicable"
@@ -186,6 +189,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         val act = activity ?: return result.error("INTERNAL_ERROR", "no activity", null)
         if (forImport && cat != "contacts") return result.success("granted") // own MediaStore inserts need none
         val perms = when (cat) {
+            "notifications" -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
             "contacts" -> if (forImport) emptyList() else listOf(Manifest.permission.READ_CONTACTS)
             else -> mediaPermissions(cat).toMutableList().apply {
                 if (Build.VERSION.SDK_INT >= 34 && cat != "audio") add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)

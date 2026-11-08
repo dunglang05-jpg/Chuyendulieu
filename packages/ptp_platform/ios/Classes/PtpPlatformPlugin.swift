@@ -79,7 +79,7 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
           if r["status"] as? String == "imported" { return r }
           return try self.files.saveToFiles(url: url, category: cat, name: name, reason: r["message"] as? String)
         case "contacts":
-          return try self.contacts.importVCard(url: url)
+          return try self.contacts.importVCard(url: url, files: self.files)
         default:
           return try self.files.saveToFiles(url: url, category: cat, name: name, reason: nil)
         }
