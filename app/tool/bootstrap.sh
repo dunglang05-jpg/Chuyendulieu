@@ -13,6 +13,10 @@ for f in android/app/build.gradle android/app/build.gradle.kts; do
   [ -f "$f" ] && sed -i.bak -E 's/minSdk(Version)?( =|) *flutter\.minSdkVersion/minSdk = 29/' "$f" && rm -f "$f.bak"
 done
 
+# Display name shown under the app icon.
+APP_NAME="Chuyển dữ liệu"
+sed -i.bak -E "s/android:label=\"[^\"]*\"/android:label=\"$APP_NAME\"/" android/app/src/main/AndroidManifest.xml && rm -f android/app/src/main/AndroidManifest.xml.bak
+
 if [[ "$(uname)" == "Darwin" ]]; then
   PL=ios/Runner/Info.plist
   put() { /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" "$PL" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :$1 $3" "$PL"; }
@@ -21,6 +25,8 @@ if [[ "$(uname)" == "Darwin" ]]; then
   put NSPhotoLibraryUsageDescription string "Đọc ảnh và video bạn chọn để gửi sang máy kia."
   put NSPhotoLibraryAddUsageDescription string "Lưu ảnh và video nhận được vào thư viện Ảnh."
   put NSContactsUsageDescription string "Xuất danh bạ để gửi và nhập danh bạ nhận được."
+  put CFBundleDisplayName string "$APP_NAME"
+  put CFBundleName string "$APP_NAME"
   put UIFileSharingEnabled bool true
   put LSSupportsOpeningDocumentsInPlace bool true
   # Podfile: iOS 14 minimum (PHPicker limited library, UTType).

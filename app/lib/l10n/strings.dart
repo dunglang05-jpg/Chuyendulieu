@@ -11,7 +11,7 @@ class S {
   }
 
   static const Map<String, Map<String, String>> _s = {
-    'app_title': {'vi': 'Phone Transfer Pro', 'en': 'Phone Transfer Pro'},
+    'app_title': {'vi': 'Chuyển dữ liệu', 'en': 'Chuyển dữ liệu'},
     'send': {'vi': 'Gửi dữ liệu', 'en': 'Send data'},
     'send_sub': {'vi': 'Máy này là máy cũ', 'en': 'This is the old phone'},
     'receive': {'vi': 'Nhận dữ liệu', 'en': 'Receive data'},
@@ -24,7 +24,7 @@ class S {
     },
     'show_qr': {'vi': 'Hiện mã QR trên máy này', 'en': 'Show QR on this phone'},
     'scan_qr': {'vi': 'Quét mã QR của máy kia', 'en': 'Scan the other phone\'s QR'},
-    'qr_hint': {'vi': 'Dùng Phone Transfer Pro trên máy kia để quét mã này.', 'en': 'Scan this with Phone Transfer Pro on the other phone.'},
+    'qr_hint': {'vi': 'Dùng ứng dụng Chuyển dữ liệu trên máy kia để quét mã này.', 'en': 'Scan this with Chuyển dữ liệu on the other phone.'},
     'qr_expires': {'vi': 'Mã hết hạn sau {s} giây', 'en': 'Code expires in {s}s'},
     'qr_new': {'vi': 'Tạo mã mới', 'en': 'New code'},
     'no_wifi_ip': {

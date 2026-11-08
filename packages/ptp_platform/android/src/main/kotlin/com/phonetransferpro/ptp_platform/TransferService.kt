@@ -27,7 +27,7 @@ class TransferService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Chuyển dữ liệu", NotificationManager.IMPORTANCE_LOW))
         val n: Notification = NotificationCompat.Builder(this, CHANNEL)
-            .setContentTitle("Phone Transfer Pro")
+            .setContentTitle("Chuyển dữ liệu")
             .setContentText("Đang chuyển dữ liệu — giữ hai máy gần nhau")
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)

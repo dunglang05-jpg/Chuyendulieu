@@ -1,4 +1,4 @@
-# Phone Transfer Pro
+# Chuyển dữ liệu (Phone Transfer Pro)
 
 Chuyển dữ liệu trực tiếp giữa hai điện thoại qua Wi-Fi/điểm phát nội bộ, không cần máy tính, không cần Internet — thiết kế cho cả bốn chiều **Android→Android, Android→iPhone, iPhone→Android, iPhone→iPhone**.
 
