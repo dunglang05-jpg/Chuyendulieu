@@ -1,0 +1,65 @@
+# Builds and tests on GitHub's hosted runners (no local machine needed).
+# Results are real CI logs; an APK artifact is uploaded for installing on an Android phone.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reference-peer:
+    name: Protocol reference tests (Python)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/reference_peer } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install cryptography pytest pytest-asyncio pytest-timeout
+      - run: python -m pytest -q --timeout 120
+
+  android:
+    name: Flutter analyze, test, build APK
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter --version
+      - run: bash tool/bootstrap.sh
+      - name: flutter analyze
+        run: flutter analyze --no-fatal-infos
+      - name: flutter test
+        run: flutter test --reporter expanded
+        if: success() || failure()
+      - name: Build debug APK
+        run: flutter build apk --debug
+        if: success() || failure()
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: phone-transfer-pro-debug-apk
+          path: app/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+  ios:
+    name: iOS build (unsigned)
+    runs-on: macos-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: xcodebuild -version && flutter --version
+      - run: bash tool/bootstrap.sh
+      - name: Build iOS without code signing
+        run: flutter build ios --debug --no-codesign
