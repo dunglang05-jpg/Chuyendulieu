@@ -262,8 +262,7 @@ Future<TransferReport> runSender(
   final todo = [for (final i in offsets.keys.toList()..sort()) if (!already.contains(i)) i];
   try {
     for (final i in todo) {
-      await sendFile(i, offsets[i]!);
-      await sources[i].release();
+      await sendFile(i, offsets[i]!); // sources stay open until the batch ends (needed for a hash retry)
     }
     await waitUntil(() => todo.every(results.containsKey));
     for (final i in todo.where((i) => results[i] == 'hash_mismatch').toList()) {

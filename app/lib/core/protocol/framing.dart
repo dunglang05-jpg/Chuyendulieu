@@ -44,6 +44,8 @@ class FrameReader {
         throw PtpException(PtpErrorCode.networkInterrupted, e.message);
       } on TlsException catch (e) {
         throw PtpException(PtpErrorCode.networkInterrupted, e.message);
+      } on StateError catch (e) {
+        throw PtpException(PtpErrorCode.networkInterrupted, e.message);
       }
       if (!more) throw PtpException(PtpErrorCode.networkInterrupted, 'peer closed connection');
       final c = _it.current;
@@ -130,13 +132,17 @@ class FrameWriter {
 
   Future<void> _enqueue(List<Uint8List> parts) {
     final next = _tail.then((_) async {
-      for (final p in parts) {
-        _sink.add(p);
-      }
+      // Any failure to hand bytes to the socket (reset, closed sink, TLS error) is a network loss,
+      // so the controller's resume path always triggers.
       try {
+        for (final p in parts) {
+          _sink.add(p);
+        }
         await _sink.flush();
-      } on SocketException catch (e) {
-        throw PtpException(PtpErrorCode.networkInterrupted, e.message);
+      } on PtpException {
+        rethrow;
+      } catch (e) {
+        throw PtpException(PtpErrorCode.networkInterrupted, e.runtimeType.toString());
       }
     });
     _tail = next.catchError((Object _) {});

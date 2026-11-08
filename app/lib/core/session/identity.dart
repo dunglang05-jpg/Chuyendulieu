@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:basic_utils/basic_utils.dart';
 import 'package:crypto/crypto.dart' as hash;
+import 'package:pointycastle/export.dart' show ECPrivateKey, ECPublicKey;
 
 import '../protocol/codec.dart';
 
