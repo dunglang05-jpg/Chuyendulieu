@@ -1,0 +1,79 @@
+# Diagnostic only: inspects the built APK / iOS app and prints facts to the log. Runs on the audit branch.
+name: APK audit
+on:
+  push:
+    branches: [audit/apk-inspect]
+  workflow_dispatch:
+
+jobs:
+  android-audit:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter --version && java -version 2>&1
+      - run: bash tool/bootstrap.sh
+      - name: Generated Android build config
+        run: |
+          ls android/app; for f in android/app/build.gradle*; do echo "=== $f"; cat "$f"; done
+          echo "=== android/settings.gradle*"; cat android/settings.gradle* ; echo "=== gradle wrapper"; cat android/gradle/wrapper/gradle-wrapper.properties
+          echo "=== app AndroidManifest.xml"; cat android/app/src/main/AndroidManifest.xml
+      - name: Dependency tree and licenses
+        run: |
+          flutter pub deps --style=compact
+          flutter pub outdated || true
+          python3 - <<'PY'
+          import json, os, urllib.parse
+          cfg = json.load(open('.dart_tool/package_config.json'))
+          for p in sorted(cfg['packages'], key=lambda p: p['name']):
+              root = urllib.parse.urlparse(p['rootUri']).path if p['rootUri'].startswith('file:') else os.path.normpath(os.path.join('.dart_tool', p['rootUri']))
+              lic = next((os.path.join(root, n) for n in ('LICENSE', 'LICENSE.md', 'LICENSE.txt') if os.path.exists(os.path.join(root, n))), None)
+              head = ' '.join(open(lic, errors='replace').read(400).split())[:110] if lic else '(no LICENSE file)'
+              print(f"LIC {p['name']:<34} {head}")
+          PY
+      - name: Build debug APK
+        run: flutter build apk --debug
+      - name: Inspect debug APK
+        run: |
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1); echo "build-tools: $BT"
+          A=build/app/outputs/flutter-apk/app-debug.apk; ls -l $A
+          $BT/aapt2 dump badging $A | grep -E "^(package|sdkVersion|targetSdkVersion|uses-permission|application-label|native-code|launchable)"
+          echo "=== largest entries"; unzip -lv $A | sort -k1 -n -r | head -25
+          echo "=== by top-level dir (uncompressed bytes)"; unzip -l $A | awk 'NR>3 && NF==4 {split($4,a,"/"); s[a[1]"/"a[2]]+=$1} END {for (k in s) printf "%12d %s\n", s[k], k}' | sort -n -r | head -20
+          echo "=== merged manifest (debug)"; cat $(find build/app/intermediates -path "*merged_manifest*debug*" -name AndroidManifest.xml | head -1)
+      - name: Build release APK (template signs with debug key) and sizes
+        run: |
+          flutter build apk --release
+          ls -l build/app/outputs/flutter-apk/
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          $BT/aapt2 dump badging build/app/outputs/flutter-apk/app-release.apk | grep -E "^(package|sdkVersion|targetSdkVersion|native-code)"
+          unzip -lv build/app/outputs/flutter-apk/app-release.apk | sort -k1 -n -r | head -15
+          echo "=== per-ABI split"
+          flutter build apk --release --split-per-abi
+          ls -l build/app/outputs/flutter-apk/
+      - name: Size analysis (arm64)
+        run: flutter build apk --release --target-platform android-arm64 --analyze-size 2>&1 | tail -60
+
+  ios-audit:
+    runs-on: macos-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: xcodebuild -version && flutter --version
+      - run: bash tool/bootstrap.sh
+      - name: Generated iOS config
+        run: |
+          plutil -p ios/Runner/Info.plist
+          echo "=== Podfile"; cat ios/Podfile
+          grep -E "IPHONEOS_DEPLOYMENT_TARGET|PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj | sort -u
+      - name: Release build (no codesign) and size
+        run: |
+          flutter build ios --release --no-codesign
+          echo "=== Podfile.lock"; cat ios/Podfile.lock
+          du -sh build/ios/iphoneos/Runner.app; du -sh build/ios/iphoneos/Runner.app/Frameworks/* | sort -h
