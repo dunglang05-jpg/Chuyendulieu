@@ -85,11 +85,13 @@ sender   → receiver manifest      {transferId, files:[{i,path,size,mime,mtime,
 receiver → sender   manifest_resp {accept:true, files:[{i,offset}]}  | {accept:false, error, needed, available}
 sender   → receiver DATA*, file_end {i,size,sha256} | file_skip {i,reason}   (pipelined, file by file)
 receiver → sender   ack {i,offset}  (durable bytes, after fsync)   file_result {i,status}
-sender   → receiver done
+sender   → receiver done {more:bool}
 receiver → sender   report {ok,failed,skipped}
+(if more) sender → receiver manifest … (next batch, new transferId, same channel)
 either              cancel {reason} | error {code,message}
 ```
 
+* Batches: a sender may split a session into several manifests (`done.more = true`). Needed because iOS Photos exposes an asset's exact byte size only after exporting it, so the iOS sender stages a bounded batch (default ≤ 2 GiB or 25 % of free space) at a time instead of duplicating the whole library. Each batch has its own `transferId` and resumes independently.
 * `transferId`: 16 random bytes b64u. `i` = position in `files` (0..n-1).
 * Manifest validation (receiver): ≤ 100 000 files; `size` 0..2^40; known `category`; unique `i`; paths per §8; no duplicate path (NFC + case-folded). Files whose category is not in the plan are omitted from `manifest_resp` (= skipped).
 * Capacity: `free − reserve ≥ Σ(size − offset)`, reserve 256 MiB on phones, else `STORAGE_INSUFFICIENT`.

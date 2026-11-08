@@ -378,3 +378,34 @@ async def test_tls12_client_is_refused(tmp_path):
     with pytest.raises((ssl.SSLError, ConnectionError)):
         await asyncio.open_connection("127.0.0.1", h.port, ssl=ctx)
     await h.close()
+
+
+async def test_multiple_batches_on_one_channel(tmp_path):
+    from ptp_ref.session import receive_all
+    a = make(tmp_path, "b1/a.jpg", 200_000)
+    b = make(tmp_path, "b2/b.jpg", 300_000)
+    h, hc, jc = await pair()
+    store = ReceiverStore(tmp_path / "in", 0)
+
+    async def send_batches():
+        r1 = await run_sender(jc, [SourceFile(a, "a.jpg", "photos")], more=True)
+        r2 = await run_sender(jc, [SourceFile(b, "b.jpg", "photos")], more=False)
+        return r1, r2
+    reps, (s1, s2) = await asyncio.gather(receive_all(hc, store), send_batches())
+    assert len(reps) == 2 and s1.ok == s2.ok == [0] and s1.transfer_id != s2.transfer_id
+    assert sha(tmp_path / "in/photos/b.jpg") == sha(b)
+    await h.close()
+
+
+def test_cross_language_vectors_are_current():
+    v = json.loads((Path(__file__).resolve().parents[3] / "contracts/test_vectors.json").read_text())
+    sid, fp, nj, nh = (c.unb64u(v[k]) for k in ("sid", "fp", "nonceJ", "nonceH"))
+    assert c.b64u(c.pairing_proof(sid, fp, nj)) == v["pairingProof"]
+    assert c.b64u(c.resume_proof(c.unb64u(v["resumeToken"]), fp, nj)) == v["resumeProof"]
+    assert c.sas_code(sid, fp, nj, nh) == v["sas"]
+    assert c.QrPayload.parse(v["qrUri"], now=0).sid == sid
+    for item in v["validPaths"]:
+        assert c.validate_relative_path(item["in"]) == item["nfc"]
+    for bad in v["invalidPaths"]:
+        with pytest.raises(PtpError):
+            c.validate_relative_path(bad)

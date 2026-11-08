@@ -315,6 +315,7 @@ class TransferReport:
     bytes_on_wire: int = 0
     seconds: float = 0.0
     committed_paths: dict = field(default_factory=dict)
+    more: bool = False
 
 
 def _stat_ident(p: Path) -> tuple:
@@ -324,7 +325,8 @@ def _stat_ident(p: Path) -> tuple:
 
 async def run_sender(ch: Channel, files: list, transfer_id: Optional[str] = None, chunk_size: int = c.DEFAULT_CHUNK,
                      window: int = c.WINDOW, on_progress=None, abort_after_bytes: Optional[int] = None,
-                     corrupt_index: Optional[int] = None, cancel: Optional[asyncio.Event] = None) -> TransferReport:
+                     corrupt_index: Optional[int] = None, cancel: Optional[asyncio.Event] = None,
+                     more: bool = False) -> TransferReport:
     """Stream files to the peer. abort_after_bytes / corrupt_index are fault-injection hooks for tests."""
     assert ch.role == "sender" and 1 <= chunk_size <= c.MAX_CHUNK
     assert window >= 2 * c.ACK_INTERVAL, "window must exceed the receiver ack interval or the transfer stalls"
@@ -455,7 +457,7 @@ async def run_sender(ch: Channel, files: list, transfer_id: Optional[str] = None
             corrupt_index = None
             await send_file(i, 0)
         await wait_for(lambda: all(i in results for i in todo))
-        await c.write_control(ch.writer, {"t": "done"})
+        await c.write_control(ch.writer, {"t": "done", "more": more})
         await wait_for(lambda: bool(peer_report))
     finally:
         rtask.cancel()
@@ -472,6 +474,7 @@ async def run_sender(ch: Channel, files: list, transfer_id: Optional[str] = None
 
 async def run_receiver(ch: Channel, store: ReceiverStore, on_progress=None,
                        cancel: Optional[asyncio.Event] = None) -> TransferReport:
+    """Receive one batch. report.more is True when the sender announced another manifest on this channel."""
     assert ch.role == "receiver"
     msg = await c.expect_control(ch.reader, "manifest", max_len=c.MAX_MANIFEST + 1, timeout=c.CONFIRM_TIMEOUT)
     manifest = c.Manifest.from_json(msg)
@@ -566,6 +569,7 @@ async def run_receiver(ch: Channel, store: ReceiverStore, on_progress=None,
                     report.failed[i] = "FILE_CHANGED"
                     await c.write_control(ch.writer, {"t": "file_result", "i": i, "status": "FILE_CHANGED"})
             elif t == "done":
+                report.more = body.get("more") is True
                 await c.write_control(ch.writer, {"t": "report", "ok": len(report.ok), "failed": len(report.failed),
                                                   "skipped": len(report.skipped)})
                 break
@@ -579,3 +583,13 @@ async def run_receiver(ch: Channel, store: ReceiverStore, on_progress=None,
     report.ok.sort()
     report.seconds = time.monotonic() - started
     return report
+
+
+async def receive_all(ch: Channel, store: ReceiverStore, **kw) -> list:
+    """Receive batches until the sender says there are no more."""
+    reports = []
+    while True:
+        rep = await run_receiver(ch, store, **kw)
+        reports.append(rep)
+        if not rep.more:
+            return reports
