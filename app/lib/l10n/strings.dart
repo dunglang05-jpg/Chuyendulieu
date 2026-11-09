@@ -78,6 +78,37 @@ class S {
     'report_action': {'vi': '{n} mục cần bạn thao tác', 'en': '{n} items need your action'},
     'delete_partial': {'vi': 'Xóa dữ liệu tạm', 'en': 'Delete partial data'},
     'finish': {'vi': 'Xong', 'en': 'Done'},
+    'transport_wifi': {'vi': 'Wi-Fi / mạng', 'en': 'Wi-Fi / LAN'},
+    'transport_usb': {'vi': 'Cáp USB-C (thử nghiệm)', 'en': 'USB-C cable (experimental)'},
+    'usb_hint': {
+      'vi': 'Chỉ Android ↔ Android. Nối hai máy bằng cáp USB-C có truyền dữ liệu, mở khóa cả hai máy, mở ứng dụng ở cả hai và chọn Cáp USB-C. Vẫn cần quét mã QR để xác thực. Ở chế độ này ứng dụng không dùng Wi-Fi.',
+      'en': 'Android ↔ Android only. Connect with a USB-C data cable, unlock both phones, open the app on both and choose USB-C cable. The QR scan is still required. Wi-Fi is not used in this mode.'
+    },
+    'usb_ios_unsupported': {
+      'vi': 'iPhone không cho ứng dụng dùng cổng USB để truyền dữ liệu, nên chỉ có chế độ Wi-Fi.',
+      'en': 'iPhone does not let apps use the USB port for data, so only Wi-Fi is available.'
+    },
+    'usb_state_idle': {'vi': 'Chưa kết nối cáp', 'en': 'Cable not connected'},
+    'usb_state_waiting': {'vi': 'Đang chờ cáp USB-C…', 'en': 'Waiting for the USB-C cable…'},
+    'usb_state_permission': {'vi': 'Hãy cho phép truy cập USB trên màn hình', 'en': 'Allow USB access on screen'},
+    'usb_state_switching': {'vi': 'Đang chuyển máy kia sang chế độ phụ kiện…', 'en': 'Switching the other phone to accessory mode…'},
+    'usb_state_connected': {'vi': 'Đã kết nối qua cáp', 'en': 'Connected by cable'},
+    'usb_state_failed': {'vi': 'Kết nối cáp thất bại', 'en': 'Cable connection failed'},
+    'usb_state_stopped': {'vi': 'Đã dừng kết nối cáp', 'en': 'Cable connection stopped'},
+    'usb_role_host': {'vi': 'Máy này điều khiển USB', 'en': 'This phone controls USB'},
+    'usb_role_accessory': {'vi': 'Máy kia điều khiển USB', 'en': 'The other phone controls USB'},
+    'usb_err_USB_NOT_SUPPORTED': {'vi': 'Máy này không hỗ trợ USB host/accessory. Hãy dùng Wi-Fi.', 'en': 'This phone has no USB host/accessory support. Use Wi-Fi.'},
+    'usb_err_IOS_NO_USB_API': {'vi': 'iPhone không hỗ trợ truyền qua cáp cho ứng dụng. Hãy dùng Wi-Fi.', 'en': 'iPhone does not support cable transfer for apps. Use Wi-Fi.'},
+    'usb_err_USB_TIMEOUT': {
+      'vi': 'Không thấy máy kia qua cáp. Kiểm tra: cáp có truyền dữ liệu (không phải cáp chỉ sạc), cả hai máy đã mở khóa, mục "USB do … điều khiển" trong thông báo USB.',
+      'en': 'Other phone not found over the cable. Check: data cable (not charge-only), both phones unlocked, the "USB controlled by" setting.'
+    },
+    'usb_err_USB_PERMISSION_DENIED': {'vi': 'Quyền USB bị từ chối. Cắm lại cáp và chọn Cho phép.', 'en': 'USB permission denied. Replug and tap Allow.'},
+    'usb_err_UNKNOWN_ACCESSORY': {'vi': 'Thiết bị cắm vào không phải ứng dụng Chuyển dữ liệu.', 'en': 'The connected device is not the Chuyển dữ liệu app.'},
+    'usb_err_PEER_TIMEOUT': {'vi': 'Máy kia chưa mở ứng dụng ở chế độ Cáp USB-C.', 'en': 'The other phone is not in USB-C cable mode.'},
+    'usb_err_PROTOCOL_VERSION_MISMATCH': {'vi': 'Hai máy dùng phiên bản ứng dụng khác nhau.', 'en': 'The two phones run different app versions.'},
+    'usb_err_LINK_LOST': {'vi': 'Mất kết nối cáp. Cắm lại để tiếp tục.', 'en': 'Cable link lost. Replug to continue.'},
+    'usb_err_generic': {'vi': 'Lỗi cáp USB ({code}).', 'en': 'USB cable error ({code}).'},
     'export_log': {'vi': 'Xuất log chẩn đoán (không chứa dữ liệu cá nhân)', 'en': 'Export diagnostic log (no personal data)'},
     'log_saved': {'vi': 'Đã lưu log vào: {where}', 'en': 'Log saved to: {where}'},
     'import_denied': {

@@ -89,6 +89,12 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "deviceState":
       result(deviceState())
+    case "usbStatus", "usbStart":
+      // iOS exposes no USB API to third-party iPhone apps (DriverKit is iPadOS-only; ExternalAccessory needs MFi/iAP2).
+      result(["supported": false, "hostSupported": false, "accessorySupported": false, "state": "failed",
+              "role": NSNull(), "error": "IOS_NO_USB_API", "bridgePort": NSNull()])
+    case "usbStop":
+      result(nil)
     case "openAppSettings":
       if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
       result(nil)

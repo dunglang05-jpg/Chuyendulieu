@@ -96,4 +96,16 @@ class PtpPlatform {
       Map<String, Object?>.from(await _call<Map>('deviceState'));
 
   static Future<void> openAppSettings() => _call<void>('openAppSettings');
+
+  /// USB-C cable link (Android ↔ Android via AOA). iOS always reports supported=false.
+  /// {supported, hostSupported, accessorySupported, state: idle|waiting|permission|switching|connected|failed|stopped,
+  ///  role: usb_host|usb_accessory|null, error, bridgePort}
+  static Future<Map<String, Object?>> usbStatus() async =>
+      Map<String, Object?>.from(await _call<Map>('usbStatus'));
+
+  /// mode 'listen' (this app joins: returns bridgePort once connected) or 'connect' (this app hosts on [port]).
+  static Future<Map<String, Object?>> usbStart(String mode, {int port = 0}) async =>
+      Map<String, Object?>.from(await _call<Map>('usbStart', {'mode': mode, 'port': port}));
+
+  static Future<void> usbStop() => _call<void>('usbStop');
 }

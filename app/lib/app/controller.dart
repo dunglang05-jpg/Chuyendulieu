@@ -68,6 +68,16 @@ class MigrationController extends ChangeNotifier {
   bool reconnecting = false;
   String? deviceWarning;
 
+  /// 'wifi' (default, unchanged behaviour) or 'usb' (USB-C cable only, Android ↔ Android, experimental).
+  /// In 'usb' mode the host listens on 127.0.0.1 and the joiner only dials the USB bridge: never falls back to Wi-Fi.
+  String transport = 'wifi';
+  String? usbState;
+  String? usbRole;
+  String? usbError;
+  Timer? _usbPoll;
+  String _usbMode = 'listen';
+  int _usbPort = 0;
+
   // Confirmation step
   String? pendingSas;
   DeviceInfo? pendingPeer;
@@ -170,7 +180,8 @@ class MigrationController extends ChangeNotifier {
         qrUri = m['uri'] as String;
         qrExpires = m['expiresAt'] as DateTime;
         qrEndpoints = (m['endpoints'] as List<Object?>).cast<String>();
-        _log.event('qr_shown', {'endpoints': qrEndpoints.length, 'role': role});
+        _log.event('qr_shown', {'endpoints': qrEndpoints.length, 'role': role, 'state': transport});
+        if (transport == 'usb') unawaited(_startUsb('connect', m['port'] as int));
         notifyListeners();
       case 'confirm':
         final m = data as Map<String, Object?>;
@@ -243,15 +254,23 @@ class MigrationController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ pairing
   /// This device shows the QR. [myRole] is its data role.
-  Future<void> showQr(String myRole) async {
+  Future<void> showQr(String myRole, {bool usb = false}) async {
     await _closePrevious();
     _resetSession(myRole);
+    transport = usb ? 'usb' : 'wifi';
     try {
       _go(MigrationState.discovering);
       final caps = await _caps(myRole);
+      if (usb) await _requireUsb();
       await _startWorker();
       _isHost = true;
-      _worker!.send('host', {'role': myRole, 'device': _device, 'caps': caps});
+      _worker!.send('host', {
+        'role': myRole,
+        'device': _device,
+        'caps': caps,
+        'loopbackOnly': usb,
+        'flags': usb ? const ['usb'] : const <String>[],
+      });
     } on PtpException catch (e) {
       _fail(e);
     }
@@ -263,15 +282,86 @@ class MigrationController extends ChangeNotifier {
       final qr = QrPayload.parse(uri);
       await _closePrevious();
       _resetSession(qr.hostRole == 'receiver' ? 'sender' : 'receiver');
+      transport = qr.flags.contains('usb') ? 'usb' : 'wifi';
       _go(MigrationState.discovering);
-      _go(MigrationState.pairing);
       final caps = await _caps(role);
+      var dial = uri;
+      if (transport == 'usb') {
+        await _requireUsb();
+        final port = await _startUsb('listen', 0, waitConnected: true);
+        // Same session id, fingerprint and expiry; only the endpoint changes to the local USB bridge.
+        dial = QrPayload(
+                version: qr.version,
+                sid: qr.sid,
+                expiresAt: qr.expiresAt,
+                endpoints: ['127.0.0.1:$port'],
+                fingerprint: qr.fingerprint,
+                hostRole: qr.hostRole,
+                platform: qr.platform,
+                flags: qr.flags)
+            .toUri();
+      }
+      _go(MigrationState.pairing);
       await _startWorker();
       _isHost = false;
-      _worker!.send('join', {'uri': uri, 'device': _device, 'caps': caps});
+      _worker!.send('join', {'uri': dial, 'device': _device, 'caps': caps});
     } on PtpException catch (e) {
       _fail(e);
     }
+  }
+
+  // ------------------------------------------------------------------ USB-C cable (experimental, Android only)
+  Future<void> _requireUsb() async {
+    final st = await PtpPlatform.usbStatus();
+    if (st['supported'] != true) {
+      throw PtpException(PtpErrorCode.platformRestriction, (st['error'] as String?) ?? 'USB_NOT_SUPPORTED');
+    }
+  }
+
+  /// Starts the native USB bridge and keeps polling it. With [waitConnected], returns the local bridge port once the
+  /// cable link is up (joiner). If the cable drops after pairing, the bridge is restarted on the same port so the
+  /// worker's normal resume logic reconnects through it.
+  Future<int> _startUsb(String mode, int port, {bool waitConnected = false}) async {
+    _usbMode = mode;
+    _usbPort = port;
+    await PtpPlatform.usbStart(mode, port: port);
+    final ready = Completer<int>();
+    var lastState = '';
+    _usbPoll?.cancel();
+    _usbPoll = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      Map<String, Object?> st;
+      try {
+        st = await PtpPlatform.usbStatus();
+      } catch (_) {
+        return;
+      }
+      usbState = st['state'] as String?;
+      usbRole = st['role'] as String?;
+      usbError = st['error'] as String?;
+      if (usbState != lastState) {
+        lastState = usbState ?? '';
+        _log.event('usb', {'state': usbState, 'role': usbRole, 'code': usbError});
+        notifyListeners();
+      }
+      final bp = st['bridgePort'];
+      if (usbState == 'connected') {
+        if (bp is int && bp > 0) _usbPort = mode == 'listen' ? bp : _usbPort;
+        if (!ready.isCompleted) ready.complete(mode == 'listen' ? (bp as int? ?? 0) : port);
+      } else if (usbState == 'failed') {
+        if (!ready.isCompleted) {
+          ready.completeError(PtpException(PtpErrorCode.platformRestriction, usbError ?? 'USB_FAILED'));
+        } else if (_paired && !sm.state.isTerminal) {
+          // Cable unplugged/replugged mid-session: relink on the same local port; resume does the rest.
+          _log.event('usb_relink', {'role': usbRole});
+          await PtpPlatform.usbStart(_usbMode, port: _usbPort);
+        } else if (!_paired) {
+          _fail(PtpException(PtpErrorCode.platformRestriction, usbError ?? 'USB_FAILED'));
+        }
+      }
+    });
+    if (!waitConnected) return port;
+    return ready.future.timeout(const Duration(seconds: 100),
+        onTimeout: () => throw PtpException(PtpErrorCode.platformRestriction, 'USB_TIMEOUT'));
   }
 
   Future<void> _onPaired() async {
@@ -529,6 +619,13 @@ class MigrationController extends ChangeNotifier {
       });
 
   Future<void> _closePrevious() async {
+    _usbPoll?.cancel();
+    _usbPoll = null;
+    if (transport == 'usb') {
+      try {
+        await PtpPlatform.usbStop();
+      } catch (_) {}
+    }
     await _workerSub?.cancel();
     _workerSub = null;
     final w = _worker;
@@ -684,6 +781,13 @@ class MigrationController extends ChangeNotifier {
 
   Future<void> _teardown() async {
     _deviceTimer?.cancel();
+    _usbPoll?.cancel();
+    _usbPoll = null;
+    if (transport == 'usb') {
+      try {
+        await PtpPlatform.usbStop();
+      } catch (_) {}
+    }
     try {
       await PtpPlatform.setTransferActive(false);
     } catch (_) {}
@@ -740,6 +844,10 @@ class MigrationController extends ChangeNotifier {
     _sessionRow = null;
     userPaused = false;
     _thermalPaused = false;
+    transport = 'wifi';
+    usbState = null;
+    usbRole = null;
+    usbError = null;
     progress
       ..doneBytes = 0
       ..totalBytes = 0

@@ -26,6 +26,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.phonetransferpro.ptp_platform.usb.UsbTransport
 import java.io.File
 
 class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware,
@@ -38,6 +39,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var media: MediaAdapter
     private lateinit var contacts: ContactsAdapter
+    private lateinit var usbTransport: UsbTransport
 
     private var pendingPermission: Pair<Int, MethodChannel.Result>? = null
     private var pendingPermissionCategory: String? = null
@@ -48,6 +50,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         context = b.applicationContext
         media = MediaAdapter(context)
         contacts = ContactsAdapter(context)
+        usbTransport = UsbTransport(context)
         channel = MethodChannel(b.binaryMessenger, "com.phonetransferpro/ptp_platform")
         channel.setMethodCallHandler(this)
     }
@@ -55,6 +58,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     override fun onDetachedFromEngine(b: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
         media.closeAll()
+        usbTransport.stop()
         scope.cancel()
     }
 
@@ -119,6 +123,16 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 result.success(null)
             }
             "deviceState" -> result.success(deviceState())
+            // USB-C Android↔Android link (AOA). See docs/USB_C_OTG_ARCHITECTURE.md. NOT TESTED ON DEVICES.
+            "usbStatus" -> result.success(usbTransport.status())
+            "usbStart" -> {
+                usbTransport.start(call.argument<String>("mode") ?: "listen", call.argument<Int>("port") ?: 0)
+                result.success(usbTransport.status())
+            }
+            "usbStop" -> {
+                usbTransport.stop()
+                result.success(null)
+            }
             "openAppSettings" -> {
                 val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

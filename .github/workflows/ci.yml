@@ -4,7 +4,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
   workflow_dispatch:
 
@@ -43,6 +43,10 @@ jobs:
         if: success() || failure()
       - name: Build debug APK
         run: flutter build apk --debug
+        if: success() || failure()
+      - name: Android plugin unit tests (JVM) — USB bridge
+        working-directory: app/android
+        run: ./gradlew :ptp_platform:testDebugUnitTest --no-daemon --console=plain
         if: success() || failure()
       - name: Build release APK for arm64 phones (signed with the debug key until a release keystore exists)
         run: flutter build apk --release --target-platform android-arm64

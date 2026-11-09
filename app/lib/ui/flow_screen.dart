@@ -29,6 +29,7 @@ String errorText(PtpException e) => switch (e.code) {
       PtpErrorCode.permissionDenied => S.t('err_permission'),
       PtpErrorCode.hashMismatch => S.t('err_hash'),
       PtpErrorCode.userCancelled => S.t('err_cancelled'),
+      PtpErrorCode.platformRestriction => usbReason(e.message),
       _ => '${S.t('err_internal')} (${e.code.wire})',
     };
 
@@ -44,6 +45,7 @@ class FlowScreen extends StatefulWidget {
 
 class _FlowScreenState extends State<FlowScreen> {
   bool _scanning = false;
+  bool _usb = false;
   MigrationController get c => widget.controller;
 
   @override
@@ -86,10 +88,21 @@ class _FlowScreenState extends State<FlowScreen> {
         return _scanning ? _ScanView(onCode: (code) {
                 setState(() => _scanning = false);
                 c.joinQr(code);
-              }) : _ConnectChoice(role: widget.role, onShow: () => c.showQr(widget.role), onScan: () => setState(() => _scanning = true));
+              }) : _ConnectChoice(
+                role: widget.role,
+                usb: _usb,
+                onTransport: (v) => setState(() => _usb = v),
+                onShow: () => c.showQr(widget.role, usb: _usb),
+                onScan: () => setState(() => _scanning = true));
       case MigrationState.discovering:
       case MigrationState.pairing:
-        return c.qrUri != null ? _QrView(c: c, role: widget.role) : const Center(child: CircularProgressIndicator());
+        if (c.qrUri != null) return _QrView(c: c, role: widget.role);
+        return Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const CircularProgressIndicator(),
+            if (c.transport == 'usb') ...[const SizedBox(height: 16), _UsbStatus(c: c)],
+          ]),
+        );
       case MigrationState.authenticating:
       case MigrationState.capabilityExchange:
       case MigrationState.scanning:
@@ -118,8 +131,11 @@ class _FlowScreenState extends State<FlowScreen> {
 }
 
 class _ConnectChoice extends StatelessWidget {
-  const _ConnectChoice({required this.role, required this.onShow, required this.onScan});
+  const _ConnectChoice(
+      {required this.role, required this.usb, required this.onTransport, required this.onShow, required this.onScan});
   final String role;
+  final bool usb;
+  final ValueChanged<bool> onTransport;
   final VoidCallback onShow;
   final VoidCallback onScan;
 
@@ -130,7 +146,23 @@ class _ConnectChoice extends StatelessWidget {
     final show = FilledButton.icon(onPressed: onShow, icon: const Icon(Icons.qr_code_2_rounded), label: Text(S.t('show_qr')));
     final scan = OutlinedButton.icon(onPressed: onScan, icon: const Icon(Icons.qr_code_scanner_rounded), label: Text(S.t('scan_qr')));
     return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(S.t('same_wifi'), textAlign: TextAlign.center),
+      if (Platform.isAndroid) ...[
+        // Cable mode is offered on Android only: iPhone apps have no public USB API (docs/USB_C_OTG_RESEARCH.md).
+        SegmentedButton<bool>(
+          segments: [
+            ButtonSegment(value: false, icon: const Icon(Icons.wifi_rounded), label: Text(S.t('transport_wifi'))),
+            ButtonSegment(value: true, icon: const Icon(Icons.usb_rounded), label: Text(S.t('transport_usb'))),
+          ],
+          selected: {usb},
+          onSelectionChanged: (s) => onTransport(s.first),
+        ),
+        const SizedBox(height: 16),
+      ],
+      Text(usb ? S.t('usb_hint') : S.t('same_wifi'), textAlign: TextAlign.center),
+      if (!Platform.isAndroid) ...[
+        const SizedBox(height: 8),
+        Text(S.t('usb_ios_unsupported'), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+      ],
       const SizedBox(height: 32),
       showFirst ? show : scan,
       const SizedBox(height: 12),
@@ -179,12 +211,45 @@ class _QrViewState extends State<_QrView> {
         Text(S.t('qr_expires', {'s': left}))
       else
         FilledButton(onPressed: () => widget.c.showQr(widget.role), child: Text(S.t('qr_new'))),
-      if (loopbackOnly) ...[
+      if (widget.c.transport == 'usb') ...[const SizedBox(height: 12), _UsbStatus(c: widget.c)],
+      if (loopbackOnly && widget.c.transport != 'usb') ...[
         const SizedBox(height: 12),
         Text(S.t('no_wifi_ip'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
       ],
     ]);
   }
+}
+
+/// Real state reported by the native USB transport (no simulated values).
+class _UsbStatus extends StatelessWidget {
+  const _UsbStatus({required this.c});
+  final MigrationController c;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = c.usbState ?? 'waiting';
+    final role = switch (c.usbRole) {
+      'usb_host' => S.t('usb_role_host'),
+      'usb_accessory' => S.t('usb_role_accessory'),
+      _ => '',
+    };
+    return Column(children: [
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(state == 'connected' ? Icons.usb_rounded : Icons.usb_off_rounded),
+        const SizedBox(width: 8),
+        Flexible(child: Text(S.t('usb_state_$state'))),
+      ]),
+      if (role.isNotEmpty) Text(role, style: Theme.of(context).textTheme.bodySmall),
+      if (state == 'failed' && c.usbError != null)
+        Text(usbReason(c.usbError!), textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+    ]);
+  }
+}
+
+String usbReason(String code) {
+  final key = 'usb_err_${code.split(':').first}';
+  final t = S.t(key);
+  return t == key ? S.t('usb_err_generic', {'code': code}) : t;
 }
 
 class _ScanView extends StatefulWidget {

@@ -156,7 +156,14 @@ class _Worker {
     _device = a['device'] as DeviceInfo;
     _caps = a['caps'] as Capabilities;
     final identity = await EphemeralIdentity.generate();
-    final h = PtpHost(role: a['role'] as String, device: _device, confirm: _confirmCb, caps: _caps, identity: identity);
+    final h = PtpHost(
+        role: a['role'] as String,
+        device: _device,
+        confirm: _confirmCb,
+        caps: _caps,
+        identity: identity,
+        loopbackOnly: a['loopbackOnly'] == true,
+        flags: ((a['flags'] as List<Object?>?) ?? const []).cast<String>());
     await h.start();
     _host = h;
     _emit('qr', {'uri': h.qr.toUri(), 'expiresAt': h.expiresAt, 'endpoints': h.endpoints, 'port': h.port});

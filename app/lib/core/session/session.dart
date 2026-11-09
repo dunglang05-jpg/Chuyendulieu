@@ -85,7 +85,14 @@ Future<void> _exchangeCaps(PtpChannel ch, Capabilities caps) async {
 
 /// Device that shows the QR code and runs the TLS server.
 class PtpHost {
-  PtpHost({required this.role, required this.device, required this.confirm, required this.caps, required this.identity})
+  PtpHost(
+      {required this.role,
+      required this.device,
+      required this.confirm,
+      required this.caps,
+      required this.identity,
+      this.loopbackOnly = false,
+      this.flags = const []})
       : sid = randomBytes(16),
         expiresAt = DateTime.now().add(qrTtl);
 
@@ -94,6 +101,12 @@ class PtpHost {
   ConfirmCallback confirm;
   final Capabilities caps;
   final EphemeralIdentity identity;
+
+  /// USB-only mode: listen on 127.0.0.1 so the only way in is the USB bridge (no Wi-Fi fallback).
+  final bool loopbackOnly;
+
+  /// Non-sensitive QR feature flags, e.g. 'usb' tells the scanner to connect through the cable.
+  final List<String> flags;
   final Uint8List sid;
   DateTime expiresAt;
 
@@ -110,9 +123,10 @@ class PtpHost {
 
   /// Bind on all interfaces; endpoints advertise private IPv4/IPv6 addresses of Wi-Fi / hotspot interfaces.
   Future<void> start({int port = 0}) async {
-    _server = await SecureServerSocket.bind(InternetAddress.anyIPv4, port, identity.serverContext());
+    _server = await SecureServerSocket.bind(
+        loopbackOnly ? InternetAddress.loopbackIPv4 : InternetAddress.anyIPv4, port, identity.serverContext());
     _server!.listen(_handle, onError: (Object _) {});
-    endpoints = await localEndpoints(_server!.port);
+    endpoints = loopbackOnly ? ['127.0.0.1:${_server!.port}'] : await localEndpoints(_server!.port);
     _chIt = StreamIterator(_channels.stream);
   }
 
@@ -126,6 +140,7 @@ class PtpHost {
         fingerprint: identity.fingerprint,
         hostRole: role,
         platform: device.platform,
+        flags: flags,
       );
 
   /// Waits for the next authenticated channel (first pairing or a resume).
