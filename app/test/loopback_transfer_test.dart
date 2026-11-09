@@ -123,7 +123,7 @@ void main() {
     final big = await makeFile(tmp, 'big.bin', 40 * 1024 * 1024);
     final (h, hc, jc) = await pair();
     final tid = b64u(randomBytes(16));
-    final cancelAt = 25 * 1024 * 1024;
+    const cancelAt = 25 * 1024 * 1024;
     final sendF = runSender(jc, [FileSource(big.path, 'big.bin', 'videos')], transferId: tid,
         onProgress: (i, done, total, wire) {
       if (wire >= cancelAt) jc.socket.destroy(); // simulate Wi-Fi loss

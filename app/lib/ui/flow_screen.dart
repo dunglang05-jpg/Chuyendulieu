@@ -62,7 +62,7 @@ class _FlowScreenState extends State<FlowScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: c.state == MigrationState.idle || c.state.isTerminal,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, _) async {
         if (!didPop && await _confirmLeave() && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
