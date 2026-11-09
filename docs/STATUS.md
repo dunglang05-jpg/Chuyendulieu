@@ -1,4 +1,4 @@
-# Trạng thái dự án — cập nhật 2026-11-08 (sau CI lần 1)
+# Trạng thái dự án — cập nhật 2026-11-09
 
 > **Chưa có chiều chuyển nào được công bố là "supported".** Theo `CLAUDE.md` §8, một chiều chỉ được coi là hỗ trợ khi cả hai đầu build được và qua kiểm thử tích hợp trên điện thoại thật. Build đã có (CI); kiểm thử trên điện thoại thật thì chưa.
 
@@ -17,13 +17,17 @@ Cả bốn chiều dùng **cùng một giao thức và cùng engine Dart**; ch�
 
 | Hạng mục | Bằng chứng | Môi trường |
 |---|---|---|
-| **CI GitHub Actions (run 42480985631)**: `flutter analyze` sạch; **15/15 test Dart pass** (vector chéo Python↔Dart, domain, truyền thật qua TLS loopback cả 2 hướng QR, resume, sai fingerprint, path traversal); **APK debug build thành công**; **iOS build (không ký) thành công** | Log CI trên repo | Ubuntu (Flutter 3.47.9), macOS (Xcode 26.6) — không phải điện thoại |
+| **CI GitHub Actions (run 42543205544, commit 3a1db79)**: `flutter analyze` → *No issues found*; **23/23 test Dart pass** (vector chéo Python↔Dart, domain, log không lộ dữ liệu cá nhân, TLS loopback cả 2 hướng QR, resume, sai fingerprint, path traversal, thiếu dung lượng, hủy, **2 worker isolate thật ghép đôi và truyền**); APK debug + **APK release arm64 33,4 MB** + iOS chưa ký build thành công | Log CI trên repo | Ubuntu (Flutter 3.47.9), macOS (Xcode 26.6) — không phải điện thoại |
 | Giao thức PTP/1 (ghép đôi, TLS 1.3 ghim fingerprint, xác nhận mã 6 số, capability, manifest, chunk, ack, SHA-256, resume, batch) | 45/45 test pytest pass (`tools/reference_peer`) | Linux x86_64, Python 3.13.18, OpenSSL 3.5.9, loopback 127.0.0.1 |
 | Chống path traversal, symlink, replay QR, sai fingerprint, sai session id + rate limit, QR hết hạn, frame quá lớn trước xác thực, TLS 1.2 bị từ chối | Có test riêng cho từng trường hợp | như trên |
 | Bộ nhớ có giới hạn | 1 GiB truyền xong với RSS đỉnh 48–49 MiB, SHA-256 khớp | như trên, **không phải số liệu điện thoại** |
 | Cú pháp Dart/Kotlin/Swift | 31/31 file parse sạch bằng tree-sitter (`tools/syntax_check.py`); bộ kiểm tra đã được thử với file lỗi cố ý và bắt đúng | Chỉ là kiểm tra cú pháp — **không** kiểm tra kiểu, import hay API |
 
 Thông lượng loopback đo được dao động 118–170 MiB/s giữa các lần chạy trên cùng máy chủ. Con số này **không** nói gì về tốc độ Wi-Fi giữa hai điện thoại.
+
+## Đã sửa theo báo cáo rà soát (2026-11-08 → 09)
+
+P0-1 quyền ghi ở máy nhận · P0-2 isolate nền · P0-3 log chẩn đoán · P1-4 quyền thông báo + `onTimeout` Android 15 · P1-5 rò rỉ host khi tạo QR mới · P1-6 nút mở Cài đặt · P2-12 tiến trình máy nhận · P2-15 dọn file tạm · P2-17 bỏ 2 quyền thừa trong plugin. Còn lại: P1-7, P1-8, P1-9, P1-10, P1-11, P2-13, P2-16, P2-18 (xem `AUDIT_REPORT`).
 
 ## Cái gì chưa được kiểm chứng
 
