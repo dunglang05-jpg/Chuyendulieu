@@ -128,7 +128,7 @@ void main() {
 
     test('partial data of a transfer the phones did not agree to continue is not reused', () async {
       final video = await makeFile(tmp, 'v.mp4', 9 * 1024 * 1024 + 5);
-      const tid = 'CCCCCCCCCCCCCCCCCCCCCC';
+      final tid = b64u(List<int>.filled(16, 3)); // a valid 16-byte id (22 x 'C' has non-zero padding bits)
       ReceiverStore mk(bool allow) => ReceiverStore(p.join(tmp.path, 'inbox'), JsonCheckpointStore(tmp.path), (_) async => 1 << 40,
           reserve: 0, resumeAllowed: (_) => allow);
 
