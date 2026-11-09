@@ -119,8 +119,10 @@ class UsbBridge(
         val t = Thread({
             try {
                 body()
+            } catch (e: UsbBridgeException) {
+                fail(e.message ?: "PROTOCOL_ERROR") // keep the code (PROTOCOL_ERROR, …) for the UI and the log
             } catch (e: Exception) {
-                fail(e.javaClass.simpleName)
+                fail(e.javaClass.simpleName) // e.g. EOFException when the cable is unplugged
             }
         }, name)
         t.isDaemon = true
