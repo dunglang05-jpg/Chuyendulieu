@@ -5,7 +5,7 @@ version: 0.1.0+1
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
-  flutter: ">=3.27.0" # CardThemeData, Color.withValues (clay theme)
+  flutter: ">=3.44.0" # built-in Kotlin in ptp_platform (P1-9); also covers the clay theme APIs (3.27)
 
 # Versions are the intended ranges; they were NOT resolved here (pub.dev unreachable from the
 # authoring environment). Run `flutter pub get` and pin with pubspec.lock before any release.
@@ -20,7 +20,9 @@ dependencies:
   path: ^1.9.0
   sqflite: ^2.3.3         # history, checkpoints, reports
   qr_flutter: ^4.1.0      # show QR
-  mobile_scanner: ^5.1.1  # scan QR
+  # Audit P1-8/P1-9: 7.x drops Google ML Kit on iOS (Apple Vision instead) and only applies the Kotlin Gradle
+  # Plugin when built-in Kotlin is off. Android still uses the bundled ML Kit barcode model.
+  mobile_scanner: ^7.5.0  # scan QR
 
 dev_dependencies:
   flutter_test:
