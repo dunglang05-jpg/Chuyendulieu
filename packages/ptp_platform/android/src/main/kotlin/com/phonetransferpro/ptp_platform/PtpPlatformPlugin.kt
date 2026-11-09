@@ -155,6 +155,38 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 usbTransport.stop()
                 result.success(null)
             }
+            // Run in background with the screen off: battery optimisation status / one-time system request.
+            "backgroundStatus" -> {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                result.success(mapOf(
+                    "ignoringBatteryOptimizations" to pm.isIgnoringBatteryOptimizations(context.packageName),
+                    "manufacturer" to Build.MANUFACTURER.lowercase(),
+                ))
+            }
+            "requestBackground" -> {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (pm.isIgnoringBatteryOptimizations(context.packageName)) {
+                    result.success("granted")
+                } else {
+                    try {
+                        @Suppress("BatteryLife")
+                        val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+                        (activity ?: context).startActivity(if (activity == null) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) else i)
+                        result.success("asked")
+                    } catch (e: Exception) {
+                        result.success("unavailable")
+                    }
+                }
+            }
+            "openBatterySettings" -> {
+                try {
+                    context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (e: Exception) {
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                result.success(null)
+            }
             "openAppSettings" -> {
                 val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

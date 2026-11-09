@@ -705,6 +705,14 @@ class _TransferView extends StatelessWidget {
         const SizedBox(height: 16),
         ClayNote(text: S.t(c.transport == 'auto' ? 'reconnecting_auto' : 'reconnecting'), icon: Icons.wifi_off_rounded),
       ],
+      if (Platform.isAndroid && c.backgroundRestricted) ...[
+        const SizedBox(height: 16),
+        ClayNote(text: S.t('bg_restricted'), icon: Icons.battery_alert_rounded),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(onPressed: c.openBatterySettings, child: Text(S.t('bg_open_settings'))),
+        ),
+      ],
       if (c.deviceWarning != null) ...[
         const SizedBox(height: 16),
         ClayNote(text: S.t(c.deviceWarning!), icon: Icons.warning_amber_rounded),

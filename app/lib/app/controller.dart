@@ -606,6 +606,7 @@ class MigrationController extends ChangeNotifier {
       _go(MigrationState.preview);
       _go(MigrationState.preparing);
       await _requestNotifications();
+      await _ensureBackground();
       await PtpPlatform.setTransferActive(true);
       _startDeviceMonitor();
       _sendStarted = DateTime.now();
@@ -617,6 +618,7 @@ class MigrationController extends ChangeNotifier {
     } else {
       _go(MigrationState.preparing);
       await _requestNotifications();
+      await _ensureBackground();
       await PtpPlatform.setTransferActive(true);
       _startDeviceMonitor();
       _sendStarted = DateTime.now();
@@ -715,6 +717,7 @@ class MigrationController extends ChangeNotifier {
       ..totalBytes = selectedBytesHint;
     _go(MigrationState.preparing);
     await _requestNotifications();
+    await _ensureBackground();
     await PtpPlatform.setTransferActive(true);
     _startDeviceMonitor();
     _sendStarted = DateTime.now();
@@ -1038,10 +1041,39 @@ class MigrationController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True while Android battery optimisation still applies to this app (screen-off transfers may be cut).
+  bool backgroundRestricted = false;
+  bool _askedBackground = false;
+
+  /// User request (2026-11-09): keep running with the screen off. Asks the system ONCE per app run to exempt the
+  /// app from battery optimisation; the foreground service + wake/Wi-Fi locks do the rest. Refusal is respected.
+  Future<void> _ensureBackground() async {
+    try {
+      final st = await PtpPlatform.backgroundStatus();
+      backgroundRestricted = st['ignoringBatteryOptimizations'] != true;
+      if (backgroundRestricted && !_askedBackground) {
+        _askedBackground = true;
+        final r = await PtpPlatform.requestBackground();
+        _log.event('background', {'status': r, 'model': st['manufacturer']});
+      }
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> openBatterySettings() => PtpPlatform.openBatterySettings();
+
   /// Pauses on serious/critical thermal state; warns on low battery. Values come from the OS, not estimates.
   void _startDeviceMonitor() {
     _deviceTimer?.cancel();
     _deviceTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      try {
+        final bg = await PtpPlatform.backgroundStatus();
+        final restricted = bg['ignoringBatteryOptimizations'] != true;
+        if (restricted != backgroundRestricted) {
+          backgroundRestricted = restricted;
+          notifyListeners();
+        }
+      } catch (_) {}
       try {
         final st = await PtpPlatform.deviceState();
         final hot = st['thermal'] == 'serious' || st['thermal'] == 'critical';

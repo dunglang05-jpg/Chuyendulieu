@@ -97,6 +97,16 @@ class PtpPlatform {
 
   static Future<void> openAppSettings() => _call<void>('openAppSettings');
 
+  /// Android: {ignoringBatteryOptimizations, manufacturer}. iOS always reports true (not applicable).
+  static Future<Map<String, Object?>> backgroundStatus() async =>
+      Map<String, Object?>.from(await _call<Map>('backgroundStatus'));
+
+  /// Android: shows the system dialog "let the app always run in background?" once. granted | asked | unavailable.
+  static Future<String> requestBackground() async => await _call<String>('requestBackground');
+
+  /// Android: battery optimisation list in Settings (fallback: app details).
+  static Future<void> openBatterySettings() => _call<void>('openBatterySettings');
+
   /// USB-C cable link (Android ↔ Android via AOA). iOS always reports supported=false.
   /// {supported, hostSupported, accessorySupported, state: idle|waiting|permission|switching|connected|failed|stopped,
   ///  role: usb_host|usb_accessory|null, error, bridgePort}

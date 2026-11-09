@@ -14,6 +14,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Asks once (system dialog) to leave battery optimisation, so Doze does not cut the Wi-Fi link while the
+         screen is off during a transfer. The user can refuse; the transfer then relies on the foreground service. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Optional: the USB-C cable mode needs host or accessory support, but the app must stay installable
          without it (Wi-Fi is the default transport). -->

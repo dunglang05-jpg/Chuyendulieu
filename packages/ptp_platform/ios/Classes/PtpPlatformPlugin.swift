@@ -96,6 +96,13 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
               "role": NSNull(), "error": "IOS_NO_USB_API", "bridgePort": NSNull()])
     case "usbStop":
       result(nil)
+    case "backgroundStatus":
+      // iOS has no equivalent: transfers need the app in front (idle timer is disabled while transferring).
+      result(["ignoringBatteryOptimizations": true, "manufacturer": "apple"])
+    case "requestBackground":
+      result("not_applicable")
+    case "openBatterySettings":
+      result(nil)
     case "openAppSettings":
       if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
       result(nil)

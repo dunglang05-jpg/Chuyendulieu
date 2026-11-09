@@ -26,6 +26,11 @@ class S {
       'vi': 'Máy mới đã thiết lập xong rồi? Các công cụ này thường chỉ chạy lúc thiết lập ban đầu (một số máy cho phép trong vài ngày đầu). Nếu không, phải khôi phục cài đặt gốc máy mới — hãy sao lưu trước — hoặc cài lại từng app từ CH Play / App Store.',
       'en': 'Already set up the new phone? These tools usually run only during first setup (some phones allow it for a few days). Otherwise the new phone must be reset — back it up first — or reinstall apps one by one from the store.'
     },
+    'bg_restricted': {
+      'vi': 'Ứng dụng chưa được phép chạy nền không giới hạn: khi tắt màn hình, máy có thể ngắt kết nối. Hãy cho phép, và trên Xiaomi/OPPO/vivo/Realme bật thêm "Tự khởi chạy" / "Cho phép chạy nền" cho Chuyển dữ liệu.',
+      'en': 'The app is not allowed to run unrestricted in the background: with the screen off the phone may drop the connection. Allow it, and on Xiaomi/OPPO/vivo/Realme also enable "Autostart" / "Allow background activity".'
+    },
+    'bg_open_settings': {'vi': 'Mở cài đặt pin', 'en': 'Open battery settings'},
     'history_empty': {'vi': 'Chưa có lần chuyển nào', 'en': 'No transfers yet'},
     'cont_banner_title': {'vi': 'Có lần chuyển chưa xong', 'en': 'An unfinished transfer'},
     'cont_banner_body': {
