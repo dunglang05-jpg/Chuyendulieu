@@ -29,6 +29,7 @@ class Capabilities {
     this.backgroundTransfer = false,
     this.backgroundConstraints = 'unknown',
     this.cryptoSuites = const ['TLS_AES_128_GCM_SHA256', 'TLS_AES_256_GCM_SHA384', 'TLS_CHACHA20_POLY1305_SHA256'],
+    this.features = const ['cont1'],
   });
 
   final String platform;
@@ -43,6 +44,10 @@ class Capabilities {
   final bool backgroundTransfer;
   final String backgroundConstraints;
   final List<String> cryptoSuites;
+
+  /// Optional protocol extensions this app implements (e.g. 'cont1' = continuation after restart, audit P1-10).
+  /// Peers that do not send the field (older apps, the Python reference peer) simply get none of them.
+  final List<String> features;
 
   /// No PII: no device name, no account, no file names.
   Map<String, Object?> toJson() => {
@@ -59,6 +64,7 @@ class Capabilities {
         'backgroundTransfer': backgroundTransfer,
         'backgroundConstraints': backgroundConstraints,
         'cryptoSuites': cryptoSuites,
+        'features': features,
       };
 
   static Capabilities fromJson(Object? json) {
@@ -90,6 +96,9 @@ class Capabilities {
       backgroundTransfer: json['backgroundTransfer'] == true,
       backgroundConstraints:
           json['backgroundConstraints'] is String ? json['backgroundConstraints'] as String : 'unknown',
+      features: json['features'] is List
+          ? (json['features'] as List).whereType<String>().where((f) => f.length <= 32).take(16).toList()
+          : const [],
     );
   }
 }

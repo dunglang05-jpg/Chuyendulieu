@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'app/controller.dart';
@@ -9,7 +11,9 @@ import 'ui/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final db = await AppDatabase.open();
-  runApp(PhoneTransferApp(controller: MigrationController(db)));
+  final controller = MigrationController(db);
+  unawaited(controller.loadContinuations()); // unfinished transfers from before a restart (audit P1-10)
+  runApp(PhoneTransferApp(controller: controller));
 }
 
 class PhoneTransferApp extends StatelessWidget {

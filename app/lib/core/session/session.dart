@@ -14,6 +14,7 @@ import '../protocol/constants.dart';
 import '../protocol/errors.dart';
 import '../protocol/framing.dart';
 import '../protocol/qr_payload.dart';
+import 'continuation.dart' show sessionBinding;
 import 'identity.dart';
 
 class DeviceInfo {
@@ -40,7 +41,12 @@ typedef ConfirmCallback = Future<bool> Function(String sas, DeviceInfo peer);
 
 class PtpChannel {
   PtpChannel(this.socket, this.reader, this.writer,
-      {required this.role, required this.sas, required this.peer, required this.resumeToken, required this.resumed});
+      {required this.role,
+      required this.sas,
+      required this.peer,
+      required this.resumeToken,
+      required this.resumed,
+      required this.binding});
 
   final Socket socket;
   final FrameReader reader;
@@ -50,6 +56,10 @@ class PtpChannel {
   final DeviceInfo peer;
   final Uint8List resumeToken;
   final bool resumed;
+
+  /// Hash of this session's id, pinned certificate and both handshake nonces (continuation.dart): proofs that must
+  /// not be replayable in another session are bound to it.
+  final Uint8List binding;
   late Capabilities localCaps;
   late Capabilities peerCaps;
 
@@ -225,7 +235,12 @@ class PtpHost {
       }
       await writer.control({'t': 'paired', 'resumeToken': b64u(resumeToken!), 'resumed': resume != null});
       final ch = PtpChannel(socket, reader, writer,
-          role: role, sas: sas, peer: peer, resumeToken: resumeToken!, resumed: resume != null);
+          role: role,
+          sas: sas,
+          peer: peer,
+          resumeToken: resumeToken!,
+          resumed: resume != null,
+          binding: sessionBinding(sid, fp, nonceJ, nonceH));
       await _exchangeCaps(ch, caps);
       lastActivity = DateTime.now();
       return ch;
@@ -297,7 +312,12 @@ Future<PtpChannel> joinSession(
       final paired = await reader.expect('paired', timeout: confirmTimeout);
       final token = unb64u(paired['resumeToken'], length: 32);
       final ch = PtpChannel(socket, reader, writer,
-          role: role, sas: sas, peer: peer, resumeToken: token, resumed: resumeToken != null);
+          role: role,
+          sas: sas,
+          peer: peer,
+          resumeToken: token,
+          resumed: resumeToken != null,
+          binding: sessionBinding(qr.sid, qr.fingerprint, nonceJ, nonceH));
       await _exchangeCaps(ch, capsForRole(role));
       return ch;
     } on PtpException catch (e) {

@@ -18,7 +18,9 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: ListView(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => ListView(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
           children: [
             Row(children: [
@@ -31,6 +33,35 @@ class HomeScreen extends StatelessWidget {
                 style: const TextStyle(fontSize: 30, height: 1.18, fontWeight: FontWeight.w700, letterSpacing: -0.4)),
             const SizedBox(height: 8),
             Text(S.t('home_sub'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Clay.sub)),
+            for (final r in controller.pendingContinuations.take(1)) ...[
+              const SizedBox(height: 20),
+              ClaySurface(
+                radius: 24,
+                depth: 6,
+                padding: const EdgeInsets.all(16),
+                onTap: () => _open(context, r.role),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const ClayBlob(icon: Icons.restore_rounded, size: 42, filled: true),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(S.t('cont_banner_title'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(
+                        S.t('cont_banner_body', {
+                          'role': S.t('cont_role_${r.role}'),
+                          'name': r.peerName,
+                          'time': '${r.createdAt.toLocal().hour.toString().padLeft(2, '0')}:'
+                              '${r.createdAt.toLocal().minute.toString().padLeft(2, '0')}',
+                          'action': S.t(r.role == 'sender' ? 'send' : 'receive'),
+                        }),
+                        style: const TextStyle(fontSize: 13, height: 1.4, fontWeight: FontWeight.w600, color: Clay.sub),
+                      ),
+                    ]),
+                  ),
+                ]),
+              ),
+            ],
             const SizedBox(height: 28),
             _RoleButton(
               filled: true,
@@ -76,6 +107,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ]),
           ],
+        ),
         ),
       ),
     );

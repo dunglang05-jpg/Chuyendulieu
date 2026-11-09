@@ -9,6 +9,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -22,12 +23,14 @@ import '../core/protocol/constants.dart';
 import '../core/protocol/errors.dart';
 import '../core/protocol/manifest.dart';
 import '../core/protocol/qr_payload.dart';
+import '../core/session/continuation.dart';
 import '../core/session/session.dart';
 import '../core/transfer/engine.dart';
 import '../core/transfer/path_policy.dart';
 import '../core/transfer/receiver_store.dart';
 import '../core/worker/transfer_worker.dart';
 import '../data/db.dart';
+import 'continuation_repo.dart';
 import 'diag_log.dart';
 
 const appVersion = '0.1.0';
@@ -94,6 +97,16 @@ class MigrationController extends ChangeNotifier {
   Timer? _pathTimer;
   QrPayload? _wifiQr; // joiner: the scanned QR (Wi-Fi endpoints)
   int _hostPort = 0;
+
+  // ------------------------------------------------------------------ continuation after restart (audit P1-10)
+  ContinuationRepo? _contRepo;
+  ContinuationRecord? _contRecord;
+
+  /// This session continues an earlier transfer that BOTH phones verified (continuation.dart).
+  bool continuedTransfer = false;
+
+  /// Unfinished transfers found on this phone (shown on the home screen). No keys in here are shown.
+  List<ContinuationRecord> pendingContinuations = const [];
   String? usbState;
   String? usbRole;
   String? usbError;
@@ -135,6 +148,64 @@ class MigrationController extends ChangeNotifier {
   DateTime _sendStarted = DateTime.now();
 
   MigrationState get state => sm.state;
+
+  Future<ContinuationRepo?> _repo() async {
+    if (_contRepo != null) return _contRepo;
+    try {
+      final inbox = _inbox ?? await PtpPlatform.inboxDir();
+      _contRepo = ContinuationRepo(p.join(p.dirname(inbox), 'continuation'), _PlatformVault(), onEvent: _log.event);
+    } catch (_) {}
+    return _contRepo;
+  }
+
+  /// Reads unfinished transfers (drops expired / tampered / keyless ones). Called at start-up and after a session.
+  Future<void> loadContinuations() async {
+    try {
+      pendingContinuations = await (await _repo())?.loadAll() ?? const [];
+    } catch (_) {
+      pendingContinuations = const [];
+    }
+    notifyListeners();
+  }
+
+  Future<List<Map<String, Object?>>> _contCandidatesForWorker() async {
+    await loadContinuations();
+    return [for (final r in pendingContinuations) ContinuationRepo.toWorker(r)];
+  }
+
+  Future<void> _saveContinuation() async {
+    final r = _contRecord;
+    if (r == null) return;
+    try {
+      await (await _repo())?.save(r);
+    } catch (_) {
+      _log.event('continuation_save', {'status': 'failed'});
+    }
+  }
+
+  Future<void> _dropContinuation() async {
+    final r = _contRecord;
+    _contRecord = null;
+    if (r == null) return;
+    try {
+      await (await _repo())?.delete(r.id);
+    } catch (_) {}
+  }
+
+  void _persistSenderPlan() {
+    final r = _contRecord;
+    if (r == null || role != 'sender') return;
+    r.transferIds
+      ..clear()
+      ..addAll(_batchIds);
+    r.plan = {
+      'batches': [
+        for (final b in _batches) [for (final it in b) it.raw]
+      ],
+      'index': _batchIndex,
+    };
+    unawaited(_saveContinuation());
+  }
 
   // ------------------------------------------------------------------ capabilities
   Future<Capabilities> _caps(String forRole) async {
@@ -228,6 +299,17 @@ class MigrationController extends ChangeNotifier {
         peer = m['peer'] as DeviceInfo;
         plan = (m['plan'] as List<Object?>).cast<String>().toSet();
         onCable = transport == 'usb' || (transport == 'auto' && m['loopback'] == true);
+        final cm = m['cont'];
+        if (cm is Map) {
+          try {
+            final j = cm.cast<String, Object?>();
+            _contRecord = ContinuationRecord.fromJson(j, unb64u(j['key'], length: 32));
+            continuedTransfer = j['continued'] == true;
+          } catch (_) {
+            _contRecord = null;
+            continuedTransfer = false;
+          }
+        }
         if (m['resumed'] == true) {
           unawaited(_onResumed());
         } else {
@@ -299,9 +381,11 @@ class MigrationController extends ChangeNotifier {
       _go(MigrationState.discovering);
       final caps = await _caps(myRole);
       if (usb) await _requireUsb();
+      final cont = await _contCandidatesForWorker();
       await _startWorker();
       _isHost = true;
       _worker!.send('host', {
+        'cont': cont,
         'role': myRole,
         'device': _device,
         'caps': caps,
@@ -340,9 +424,10 @@ class MigrationController extends ChangeNotifier {
             .toUri();
       }
       _go(MigrationState.pairing);
+      final cont = await _contCandidatesForWorker();
       await _startWorker();
       _isHost = false;
-      _worker!.send('join', {'uri': dial, 'device': _device, 'caps': caps});
+      _worker!.send('join', {'uri': dial, 'device': _device, 'caps': caps, 'cont': cont});
     } on PtpException catch (e) {
       _fail(e);
     }
@@ -504,7 +589,21 @@ class MigrationController extends ChangeNotifier {
     _go(MigrationState.capabilityExchange);
     _log.event('paired', {'peerPlatform': peer?.platform, 'role': role, 'count': plan.length});
     _sessionRow ??= await db.startSession(role);
-    if (role == 'sender') {
+    final plan0 = _contRecord?.plan;
+    if (role == 'sender' && continuedTransfer && plan0 != null && _restorePlan(plan0)) {
+      // Both phones proved the same earlier transfer: send what is left, with the same transfer ids, so the
+      // receiver continues from its (MAC-checked) checkpoints. The receiver still approves the manifest.
+      _log.event('continuation', {'state': 'resume_send', 'batch': _batchIndex, 'batches': _batches.length});
+      _go(MigrationState.scanning);
+      _go(MigrationState.preview);
+      _go(MigrationState.preparing);
+      await _requestNotifications();
+      await PtpPlatform.setTransferActive(true);
+      _startDeviceMonitor();
+      _sendStarted = DateTime.now();
+      _sendStartBytes = 0;
+      await _sendRemainingBatches();
+    } else if (role == 'sender') {
       _go(MigrationState.scanning);
       _go(MigrationState.preview);
     } else {
@@ -513,6 +612,30 @@ class MigrationController extends ChangeNotifier {
       await PtpPlatform.setTransferActive(true);
       _startDeviceMonitor();
       _sendReceiveCommand();
+    }
+  }
+
+  bool _restorePlan(Map<String, Object?> plan) {
+    try {
+      final batches = [
+        for (final b in plan['batches'] as List<Object?>)
+          [for (final it in b as List<Object?>) SourceItem((it as Map).cast<String, Object?>())]
+      ];
+      final ids = _contRecord!.transferIds;
+      final index = plan['index'] as int;
+      if (batches.length != ids.length || index < 0 || index >= batches.length) return false;
+      _batches = batches;
+      _batchIds
+        ..clear()
+        ..addAll(ids);
+      _batchIndex = index;
+      final left = batches.sublist(index).expand((b) => b);
+      progress
+        ..totalFiles = left.length
+        ..totalBytes = left.fold(0, (a, i) => a + i.sizeHint);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -573,6 +696,7 @@ class MigrationController extends ChangeNotifier {
       ..clear()
       ..addAll(List.generate(_batches.length, (_) => b64u(randomBytes(16))));
     _batchIndex = 0;
+    _persistSenderPlan();
     progress
       ..totalFiles = items.length
       ..totalBytes = selectedBytesHint;
@@ -642,6 +766,7 @@ class MigrationController extends ChangeNotifier {
           _batches[_batchIndex] = _batches[_batchIndex].sublist(0, items.length);
           _batches.insert(_batchIndex + 1, rest);
           _batchIds.insert(_batchIndex + 1, b64u(randomBytes(16)));
+          _persistSenderPlan();
         }
         _go(MigrationState.transferring);
         _progressBase = reports.fold(0, (a, r) => a + r.wireBytes);
@@ -658,6 +783,7 @@ class MigrationController extends ChangeNotifier {
         _logBatch(rep);
         progress.doneFiles += rep.ok.length + rep.failed.length + rep.skipped.length;
         _batchIndex++;
+        _persistSenderPlan();
       }
       await _finish();
     } on PtpException catch (e) {
@@ -695,6 +821,11 @@ class MigrationController extends ChangeNotifier {
 
   Future<bool> _approveCb(Manifest m, int needed) async {
     _seenTransferIds.add(m.transferId);
+    final cr = _contRecord;
+    if (cr != null && role == 'receiver' && !cr.transferIds.contains(m.transferId)) {
+      cr.transferIds.add(m.transferId);
+      await _saveContinuation();
+    }
     if (_countedBatches.add(m.transferId)) {
       progress
         ..totalFiles += m.files.length
@@ -856,6 +987,8 @@ class MigrationController extends ChangeNotifier {
     // Give the worker a moment to tell the peer, then stop it.
     await Future<void>.delayed(const Duration(milliseconds: 300));
     await _teardown();
+    await _dropContinuation(); // the user abandoned this transfer
+    unawaited(loadContinuations());
     await _record('cancelled', PtpErrorCode.userCancelled);
     notifyListeners();
   }
@@ -914,6 +1047,8 @@ class MigrationController extends ChangeNotifier {
 
   Future<void> _finish() async {
     _log.event('finish', {'ok': okCount, 'failed': failedCount, 'skipped': skippedCount, 'role': role});
+    await _dropContinuation(); // nothing left to continue
+    unawaited(loadContinuations());
     final partial = failedCount > 0 || skippedCount > 0 || imports.any((i) => i.status == 'failed');
     if (sm.state == MigrationState.importing && !partial) {
       _go(MigrationState.completed);
@@ -1005,6 +1140,8 @@ class MigrationController extends ChangeNotifier {
     userPaused = false;
     _thermalPaused = false;
     transport = 'wifi';
+    _contRecord = null;
+    continuedTransfer = false;
     onCable = false;
     switchingPath = false;
     _usbArmed = false;
@@ -1026,4 +1163,18 @@ class MigrationController extends ChangeNotifier {
     sm.reset();
     notifyListeners();
   }
+}
+
+class _PlatformVault implements SecureVault {
+  @override
+  Future<void> put(String name, Uint8List secret) => PtpPlatform.vaultPut(name, base64.encode(secret));
+
+  @override
+  Future<Uint8List?> get(String name) async {
+    final s = await PtpPlatform.vaultGet(name);
+    return s == null ? null : base64.decode(s);
+  }
+
+  @override
+  Future<void> delete(String name) => PtpPlatform.vaultDelete(name);
 }

@@ -118,6 +118,15 @@
       "items": {
         "type": "string"
       }
+    },
+    "features": {
+      "description": "Optional protocol extensions, e.g. 'cont1' (continuation after app restart). Absent = none.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "maxLength": 32
+      }
     }
   },
   "additionalProperties": false

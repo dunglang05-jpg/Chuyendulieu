@@ -672,6 +672,10 @@ class _TransferView extends StatelessWidget {
         const SizedBox(width: 16),
         stat(S.t('remaining'), eta ?? '—'),
       ]),
+      if (c.continuedTransfer) ...[
+        const SizedBox(height: 18),
+        ClayNote(text: S.t('cont_resumed'), icon: Icons.restore_rounded),
+      ],
       if (c.transport != 'wifi') ...[
         const SizedBox(height: 18),
         ClaySurface(radius: 24, depth: 6, padding: const EdgeInsets.all(16), child: _PathInfo(c: c)),

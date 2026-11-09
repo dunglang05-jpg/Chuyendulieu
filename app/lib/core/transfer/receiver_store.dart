@@ -10,6 +10,7 @@ import '../protocol/codec.dart';
 import '../protocol/errors.dart';
 import '../protocol/manifest.dart';
 import '../protocol/paths.dart';
+import '../session/continuation.dart' show macJson, checkMacJson;
 
 /// Persistence for per-file resume state. JSON implementation below; the app uses SQLite (data/db.dart).
 abstract class CheckpointStore {
@@ -19,17 +20,32 @@ abstract class CheckpointStore {
 }
 
 class JsonCheckpointStore implements CheckpointStore {
-  JsonCheckpointStore(this.dir);
+  /// With [macKey] (the continuation key, audit P1-10) every checkpoint carries an HMAC and a checkpoint whose MAC
+  /// does not verify — edited, truncated, written by someone else — is treated as absent: the file restarts.
+  JsonCheckpointStore(this.dir, {this.macKey, this.onRejected});
   final String dir;
+  final List<int>? macKey;
+  final void Function(String reason)? onRejected;
 
   File _f(String tid) => File(p.join(dir, '$tid.state.json'));
 
   @override
   Future<Map<String, dynamic>> load(String tid) async {
+    final f = _f(tid);
+    if (!await f.exists()) return {};
     try {
-      final j = jsonDecode(await _f(tid).readAsString());
-      return j is Map<String, dynamic> ? j : {};
+      final j = jsonDecode(await f.readAsString());
+      if (j is! Map<String, dynamic>) throw const FormatException('not an object');
+      final key = macKey;
+      if (key == null) return j;
+      final body = j['body'];
+      if (body is! Map<String, dynamic> || !checkMacJson(key, body, j['mac'])) {
+        onRejected?.call('mac');
+        return {};
+      }
+      return body;
     } catch (_) {
+      onRejected?.call('corrupt');
       return {};
     }
   }
@@ -38,7 +54,9 @@ class JsonCheckpointStore implements CheckpointStore {
   Future<void> save(String tid, Map<String, dynamic> state) async {
     final tmp = File('${_f(tid).path}.tmp');
     final raf = await tmp.open(mode: FileMode.write);
-    await raf.writeFrom(utf8.encode(jsonEncode(state)));
+    final key = macKey;
+    final doc = key == null ? state : {'body': state, 'mac': macJson(key, state)};
+    await raf.writeFrom(utf8.encode(jsonEncode(doc)));
     await raf.flush(); // fsync
     await raf.close();
     await tmp.rename(_f(tid).path); // atomic replace
@@ -93,7 +111,7 @@ class OpenPart {
 
 class ReceiverStore {
   ReceiverStore(this.root, this.checkpoints, this.freeSpace,
-      {this.reserve = 256 * 1024 * 1024, this.media, this.importCopies = false, this.onEvent});
+      {this.reserve = 256 * 1024 * 1024, this.media, this.importCopies = false, this.onEvent, this.resumeAllowed});
 
   final String root; // app-private inbox; files the media sink cannot take are imported from here after commit
   final CheckpointStore checkpoints;
@@ -106,6 +124,11 @@ class ReceiverStore {
   /// True when importing an inbox file COPIES it (Android MediaStore insert from the inbox); false when it is moved
   /// (iOS Photos shouldMoveFile, Files) or not imported at all. Used for the capacity check.
   final bool importCopies;
+
+  /// Audit P1-10: may partial data of this transfer id from an EARLIER session be reused? Null = always (tests,
+  /// legacy). Ids already seen by this store (reconnects within the session) are always allowed.
+  final bool Function(String transferId)? resumeAllowed;
+  final Set<String> _sessionTids = {};
 
   /// Non-sensitive events for the diagnostic log (e.g. media sink fallback).
   final void Function(String event, Map<String, Object?> fields)? onEvent;
@@ -122,8 +145,17 @@ class ReceiverStore {
   Future<Map<int, int>> prepare(Manifest m, List<int> accepted) async {
     manifest = m;
     await Directory(_partialDir).create(recursive: true);
-    final old = (await checkpoints.load(m.transferId))['files'];
+    final allowed = _sessionTids.contains(m.transferId) || (resumeAllowed?.call(m.transferId) ?? true);
+    _sessionTids.add(m.transferId);
+    final old = allowed ? (await checkpoints.load(m.transferId))['files'] : null;
     final prev = old is Map<String, dynamic> ? old : <String, dynamic>{};
+    if (!allowed) {
+      // Not agreed by both phones: never build on bytes left by an earlier, unverified session.
+      onEvent?.call('resume_refused', {'state': 'not_agreed'});
+      final d = Directory(_partialDir);
+      if (await d.exists()) await d.delete(recursive: true);
+      await Directory(_partialDir).create(recursive: true);
+    }
     _files = {};
     final offsets = <int, int>{};
     for (final i in accepted) {

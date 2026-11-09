@@ -3,6 +3,7 @@
 import Contacts
 import Flutter
 import Photos
+import Security
 import UIKit
 import UniformTypeIdentifiers
 
@@ -97,6 +98,22 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "openAppSettings":
       if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+      result(nil)
+    // Continuation key (audit P1-10): Keychain, this device only, readable after first unlock (survives reboot,
+    // never synced to iCloud or restored to another phone). NOT TESTED ON DEVICES.
+    case "vaultPut":
+      guard let a = call.arguments as? [String: Any], let name = a["name"] as? String,
+            let b64 = a["data"] as? String, let data = Data(base64Encoded: b64), Vault.valid(name) else {
+        return result(FlutterError(code: "INTERNAL_ERROR", message: "vaultPut args", details: nil))
+      }
+      Vault.put(name, data) ? result(nil) : result(FlutterError(code: "INTERNAL_ERROR", message: "keychain", details: nil))
+    case "vaultGet":
+      guard let a = call.arguments as? [String: Any], let name = a["name"] as? String, Vault.valid(name) else {
+        return result(FlutterError(code: "INTERNAL_ERROR", message: "vaultGet args", details: nil))
+      }
+      result(Vault.get(name)?.base64EncodedString())
+    case "vaultDelete":
+      if let a = call.arguments as? [String: Any], let name = a["name"] as? String, Vault.valid(name) { Vault.delete(name) }
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
@@ -217,4 +234,47 @@ struct Staged {
   let url: URL
   let mtimeMs: Int64?
   let cleanupDir: URL?
+}
+
+/// Generic-password Keychain items under one service. kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly: not in
+/// iCloud Keychain, not in backups restored to another device, readable after the first unlock following a reboot.
+enum Vault {
+  private static let service = "com.phonetransferpro.continuation"
+
+  static func valid(_ name: String) -> Bool {
+    name.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil
+  }
+
+  static func put(_ name: String, _ data: Data) -> Bool {
+    delete(name)
+    let q: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: name,
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+    return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
+  }
+
+  static func get(_ name: String) -> Data? {
+    let q: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: name,
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var out: AnyObject?
+    return SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess ? out as? Data : nil
+  }
+
+  static func delete(_ name: String) {
+    let q: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: name,
+    ]
+    SecItemDelete(q as CFDictionary)
+  }
 }

@@ -122,4 +122,13 @@ class PtpPlatform {
   static Future<String> mediaPublish(String uri) async => await _call<String>('mediaPublish', {'uri': uri});
 
   static Future<void> mediaDelete(String uri) => _call<void>('mediaDelete', {'uri': uri});
+
+  /// Audit P1-10: small secrets sealed by Android Keystore (AES-GCM) / iOS Keychain (this device only).
+  /// [name]: 1–64 chars of [A-Za-z0-9_-]. [data]: base64.
+  static Future<void> vaultPut(String name, String data) => _call<void>('vaultPut', {'name': name, 'data': data});
+
+  /// Base64, or null when absent / no longer decryptable.
+  static Future<String?> vaultGet(String name) async => await _call<String?>('vaultGet', {'name': name});
+
+  static Future<void> vaultDelete(String name) => _call<void>('vaultDelete', {'name': name});
 }

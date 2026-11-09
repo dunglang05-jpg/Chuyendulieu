@@ -13,6 +13,14 @@ class S {
   static const Map<String, Map<String, String>> _s = {
     'app_title': {'vi': 'Chuyển dữ liệu', 'en': 'Chuyển dữ liệu'},
     'send': {'vi': 'Gửi dữ liệu', 'en': 'Send data'},
+    'cont_banner_title': {'vi': 'Có lần chuyển chưa xong', 'en': 'An unfinished transfer'},
+    'cont_banner_body': {
+      'vi': '{role} với {name}, bắt đầu lúc {time}. Mở lại {action}, ghép đôi với đúng máy đó và xác nhận mã 6 số: hai máy sẽ tự kiểm tra và chuyển tiếp phần còn lại. Giữ được 24 giờ.',
+      'en': '{role} with {name}, started at {time}. Open {action} again, pair with the same phone and confirm the 6-digit code: both phones check and continue the rest. Kept for 24 hours.'
+    },
+    'cont_role_sender': {'vi': 'Gửi', 'en': 'Sending'},
+    'cont_role_receiver': {'vi': 'Nhận', 'en': 'Receiving'},
+    'cont_resumed': {'vi': 'Đang tiếp tục lần chuyển trước (hai máy đã xác minh).', 'en': 'Continuing the earlier transfer (verified by both phones).'},
     'home_question': {'vi': 'Bạn muốn làm gì\ntrên máy này?', 'en': 'What do you want\nto do on this phone?'},
     'home_sub': {'vi': 'Chuyển trực tiếp giữa hai điện thoại.', 'en': 'Direct transfer between two phones.'},
     'home_footer': {'vi': 'Mã hóa TLS · Xác thực bằng mã QR', 'en': 'TLS encryption · QR authentication'},

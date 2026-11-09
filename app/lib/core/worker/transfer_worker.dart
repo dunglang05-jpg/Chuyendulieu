@@ -17,6 +17,8 @@ import 'dart:typed_data';
 import '../domain/capabilities.dart';
 import '../protocol/constants.dart';
 import '../protocol/errors.dart';
+import '../protocol/codec.dart';
+import '../session/continuation.dart';
 import '../session/identity.dart';
 import '../session/session.dart';
 import '../transfer/engine.dart';
@@ -111,6 +113,10 @@ class _Worker {
   CancelToken _cancel = CancelToken();
   final PauseGate _pause = PauseGate();
   ReceiverStore? _store;
+
+  /// Audit P1-10: earlier unfinished transfers (with their keys) and the outcome of the continuation exchange.
+  List<ContinuationRecord> _contCandidates = const [];
+  ContinuationOutcome? _cont;
   final Map<int, Completer<Object?>> _rpcs = {};
   int _rpcSeq = 0;
 
@@ -182,6 +188,29 @@ class _Worker {
     return _confirm!.future;
   }
 
+  static List<ContinuationRecord> _parseCandidates(Object? raw) {
+    final out = <ContinuationRecord>[];
+    for (final m in (raw as List<Object?>?) ?? const []) {
+      try {
+        final j = (m as Map).cast<String, Object?>();
+        out.add(ContinuationRecord.fromJson(j, unb64u(j['key'], length: 32)));
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  /// After a NEW pairing only (never after an in-session resume), and only if both apps implement it.
+  Future<void> _negotiateContinuation() async {
+    final ch = _ch!;
+    if (ch.resumed) return;
+    if (!ch.localCaps.features.contains(continuationFeature) || !ch.peerCaps.features.contains(continuationFeature)) {
+      _cont = null;
+      return;
+    }
+    _cont = await negotiateContinuation(ch, _contCandidates);
+    _log('continuation', {'state': _cont!.continued ? 'continued' : 'new', 'count': _contCandidates.length});
+  }
+
   void _paired() {
     final ch = _ch!;
     _resumeToken = ch.resumeToken;
@@ -191,7 +220,15 @@ class _Worker {
     } catch (_) {
       loopback = false;
     }
-    _emit('paired', {'peer': ch.peer, 'plan': ch.plan.toList(), 'resumed': ch.resumed, 'loopback': loopback});
+    final c = _cont;
+    _emit('paired', {
+      'peer': ch.peer,
+      'plan': ch.plan.toList(),
+      'resumed': ch.resumed,
+      'loopback': loopback,
+      if (!ch.resumed && c != null)
+        'cont': {...c.record.toJson(), 'key': b64u(c.record.key), 'continued': c.continued},
+    });
   }
 
   /// "Tự động" path switch (joiner only, it is the side that dials). Replaces the endpoints used by the next
@@ -218,8 +255,10 @@ class _Worker {
         flags: ((a['flags'] as List<Object?>?) ?? const []).cast<String>());
     await h.start();
     _host = h;
+    _contCandidates = _parseCandidates(a['cont']);
     _emit('qr', {'uri': h.qr.toUri(), 'expiresAt': h.expiresAt, 'endpoints': h.endpoints, 'port': h.port});
     _ch = await h.accept();
+    await _negotiateContinuation();
     _paired();
   }
 
@@ -227,7 +266,9 @@ class _Worker {
     _device = a['device'] as DeviceInfo;
     _caps = a['caps'] as Capabilities;
     _joinUri = a['uri'] as String;
+    _contCandidates = _parseCandidates(a['cont']);
     _ch = await joinSession(_joinUri!, device: _device, confirm: _confirmCb, capsForRole: (_) => _caps);
+    await _negotiateContinuation();
     _paired();
   }
 
@@ -264,12 +305,18 @@ class _Worker {
     final cpDir = a['checkpoints'] as String;
     await Directory(cpDir).create(recursive: true);
     final mediaCats = ((a['mediaCategories'] as List<Object?>?) ?? const []).cast<String>().toSet();
-    _store ??= ReceiverStore(a['inbox'] as String, JsonCheckpointStore(cpDir),
+    final cont = _cont;
+    _store ??= ReceiverStore(
+        a['inbox'] as String,
+        // Checkpoints are MAC'd with the continuation key when there is one (audit P1-10).
+        JsonCheckpointStore(cpDir, macKey: cont?.record.key, onRejected: (r) => _log('checkpoint_rejected', {'reason': r})),
         (path) async => (await _rpc('freeBytes', {'path': path})) as int,
         reserve: a['reserve'] as int? ?? storageReserve,
         media: mediaCats.isEmpty ? null : _RpcMediaSink(_rpc, mediaCats),
         importCopies: a['importCopies'] == true,
-        onEvent: _log);
+        onEvent: _log,
+        // Partial data from an earlier session is reused only for transfers both phones agreed to continue.
+        resumeAllowed: (tid) => cont != null && cont.continued && cont.record.transferIds.contains(tid));
     final store = _store!;
     while (true) {
       final rep = await runReceiver(_ch!, store,

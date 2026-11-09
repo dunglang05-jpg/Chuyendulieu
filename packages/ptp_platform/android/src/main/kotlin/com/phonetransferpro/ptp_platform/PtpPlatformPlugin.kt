@@ -40,6 +40,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     private lateinit var media: MediaAdapter
     private lateinit var contacts: ContactsAdapter
     private lateinit var usbTransport: UsbTransport
+    private lateinit var vault: SecureVault
 
     private var pendingPermission: Pair<Int, MethodChannel.Result>? = null
     private var pendingPermissionCategory: String? = null
@@ -49,6 +50,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     override fun onAttachedToEngine(b: FlutterPlugin.FlutterPluginBinding) {
         context = b.applicationContext
         media = MediaAdapter(context)
+        vault = SecureVault(context)
         contacts = ContactsAdapter(context)
         usbTransport = UsbTransport(context)
         channel = MethodChannel(b.binaryMessenger, "com.phonetransferpro/ptp_platform")
@@ -122,6 +124,15 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
             "mediaCreate" -> io(result) {
                 media.createPending(call.argument<String>("category")!!, call.argument<String>("name")!!, call.argument<String>("mime"))
             }
+            // Continuation key (audit P1-10), sealed by Android Keystore. NOT TESTED ON DEVICES.
+            "vaultPut" -> io(result) {
+                vault.put(call.argument<String>("name")!!, android.util.Base64.decode(call.argument<String>("data")!!, android.util.Base64.NO_WRAP))
+                null
+            }
+            "vaultGet" -> io(result) {
+                vault.get(call.argument<String>("name")!!)?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+            }
+            "vaultDelete" -> io(result) { vault.delete(call.argument<String>("name")!!); null }
             "mediaReopen" -> io(result) { media.reopenPending(call.argument<String>("uri")!!) }
             "mediaPublish" -> io(result) { media.publishPending(call.argument<String>("uri")!!) }
             "mediaDelete" -> io(result) { media.deletePending(call.argument<String>("uri")!!); null }
