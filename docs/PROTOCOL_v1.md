@@ -34,6 +34,7 @@ The QR states the host's data role; the joiner takes the opposite one. Either ph
 | `role` | `sender` or `receiver` (host's data role) |
 | `pf` | `android`, `ios`, `desktop_reference` — display hint only, never used for capability decisions |
 | `f` | non-sensitive feature flags (strings): `usb` = cable only (host listens on 127.0.0.1); `usbauto` = Wi-Fi, may move to a USB-C cable via resume (Android ↔ Android) |
+| `ap` | optional `{s, k, sec, m, b}`: name, password (8–63 printable ASCII), `wpa2`/`wpa3`, mode (`p2p` = Wi-Fi Direct group, preferred; `ap` = local-only hotspot) and band (`5`, `2`, `a` = unknown) of the host's direct link ("Điểm phát"). Ephemeral (system-generated per session, gone when the session ends); visible on the host's screen only; never logged. The joiner connects to it, then dials the endpoints (the hotspot address is listed first). Older apps reject the unknown field with a clear error. |
 
 Never in the QR: device name, file names, contacts, tokens, passwords, OTP, private keys.
 

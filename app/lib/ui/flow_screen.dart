@@ -56,7 +56,8 @@ class FlowScreen extends StatefulWidget {
 
 class _FlowScreenState extends State<FlowScreen> {
   bool _scanning = false;
-  String _mode = 'wifi'; // wifi | auto | usb
+  // User request 2026-11-09: no shared Wi-Fi needed by default → "Điểm phát" on Android (iPhone cannot host it).
+  String _mode = Platform.isAndroid ? 'hotspot' : 'wifi'; // hotspot | wifi | auto | usb
   MigrationController get c => widget.controller;
 
   @override
@@ -108,6 +109,7 @@ class _FlowScreenState extends State<FlowScreen> {
       case MigrationState.discovering:
       case MigrationState.pairing:
         if (c.qrUri != null) return _QrView(c: c, role: widget.role);
+        if (c.hotspotManual != null) return _HotspotManualView(c: c);
         return Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const CircularProgressIndicator(),
@@ -153,7 +155,8 @@ class _ConnectChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Default: the new phone (receiver) shows the code, the old phone scans. Either way works.
-    final showFirst = role == 'receiver';
+    // iPhone cannot create the direct Wi-Fi, so there it scans the Android phone's code first.
+    final showFirst = role == 'receiver' && Platform.isAndroid;
     final show = ClayPrimaryButton(onPressed: onShow, icon: Icons.qr_code_2_rounded, label: S.t('show_qr'));
     final scan = ClayButton(onPressed: onScan, icon: Icons.qr_code_scanner_rounded, label: S.t('scan_qr'));
     return ListView(children: [
@@ -164,6 +167,7 @@ class _ConnectChoice extends StatelessWidget {
         // Cable modes are Android only: iPhone apps have no public USB API (docs/USB_C_OTG_RESEARCH.md).
         ClaySegmented<String>(
           options: [
+            ('hotspot', Icons.wifi_tethering_rounded, S.t('transport_hotspot')),
             ('wifi', Icons.wifi_rounded, S.t('transport_wifi')),
             ('auto', Icons.swap_horiz_rounded, S.t('transport_auto')),
             ('usb', Icons.usb_rounded, S.t('transport_usb')),
@@ -177,17 +181,30 @@ class _ConnectChoice extends StatelessWidget {
         radius: 26,
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ClayBlob(
-              icon: switch (mode) { 'usb' => Icons.usb_rounded, 'auto' => Icons.swap_horiz_rounded, _ => Icons.wifi_rounded },
+              icon: switch (mode) {
+                'usb' => Icons.usb_rounded,
+                'auto' => Icons.swap_horiz_rounded,
+                'hotspot' => Icons.wifi_tethering_rounded,
+                _ => Icons.wifi_rounded
+              },
               size: 44,
               pressed: true),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(switch (mode) { 'usb' => S.t('usb_hint'), 'auto' => S.t('auto_hint'), _ => S.t('same_wifi') },
+            child: Text(
+                switch (mode) {
+                  'usb' => S.t('usb_hint'),
+                  'auto' => S.t('auto_hint'),
+                  'hotspot' => S.t('hotspot_hint'),
+                  _ => S.t('same_wifi')
+                },
                 style: const TextStyle(fontSize: 14, height: 1.45, fontWeight: FontWeight.w600, color: Clay.sub)),
           ),
         ]),
       ),
       if (!Platform.isAndroid) ...[
+        const SizedBox(height: 10),
+        ClayNote(text: S.t('ios_scan_hint'), icon: Icons.wifi_tethering_rounded),
         const SizedBox(height: 10),
         Text(S.t('usb_ios_unsupported'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Clay.sub)),
       ],
@@ -263,6 +280,21 @@ class _QrViewState extends State<_QrView> {
         ]),
       ),
       if (widget.c.transport == 'usb') ...[const SizedBox(height: 16), _UsbStatus(c: widget.c)],
+      if (widget.c.transport == 'hotspot') ...[
+        const SizedBox(height: 16),
+        ClayNote(
+            text: S.t('hotspot_qr_note', {
+              'band': switch (widget.c.hotspotBand) { '5' => '5 GHz ', '2' => '2,4 GHz ', _ => '' }
+            }),
+            icon: Icons.wifi_tethering_rounded),
+        if (widget.c.hotspotBand == '5')
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+                onPressed: () => widget.c.showQr(widget.role, mode: 'hotspot', force24: true),
+                child: Text(S.t('hotspot_use_24'))),
+          ),
+      ],
       if (loopbackOnly && widget.c.transport != 'usb') ...[
         const SizedBox(height: 16),
         ClayNote(text: S.t('no_wifi_ip'), icon: Icons.wifi_off_rounded),
@@ -333,6 +365,10 @@ class _UsbStatus extends StatelessWidget {
 }
 
 String usbReason(String code) {
+  if (code.startsWith('HOTSPOT')) {
+    final t = S.t('hs_err_$code');
+    return t == 'hs_err_$code' ? S.t('hs_err_generic', {'code': code}) : t;
+  }
   final key = 'usb_err_${code.split(':').first}';
   final t = S.t(key);
   return t == key ? S.t('usb_err_generic', {'code': code}) : t;
@@ -705,6 +741,18 @@ class _TransferView extends StatelessWidget {
         const SizedBox(height: 16),
         ClayNote(text: S.t(c.transport == 'auto' ? 'reconnecting_auto' : 'reconnecting'), icon: Icons.wifi_off_rounded),
       ],
+      if (Platform.isAndroid && c.backgroundRestricted) ...[
+        const SizedBox(height: 16),
+        ClayNote(text: S.t('bg_restricted'), icon: Icons.battery_alert_rounded),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(onPressed: c.openBatterySettings, child: Text(S.t('bg_open_settings'))),
+        ),
+      ],
+      if (c.slowWifiMbps != null) ...[
+        const SizedBox(height: 16),
+        ClayNote(text: S.t('slow_wifi', {'mbps': c.slowWifiMbps!}), icon: Icons.network_check_rounded),
+      ],
       if (c.deviceWarning != null) ...[
         const SizedBox(height: 16),
         ClayNote(text: S.t(c.deviceWarning!), icon: Icons.warning_amber_rounded),
@@ -843,3 +891,39 @@ Widget exportLogButton(BuildContext context, MigrationController c) => TextButto
         }
       },
     );
+
+/// iPhone fallback for "Điểm phát": shows the host's hotspot name/password so the user can join in Settings.
+class _HotspotManualView extends StatelessWidget {
+  const _HotspotManualView({required this.c});
+  final MigrationController c;
+
+  @override
+  Widget build(BuildContext context) {
+    final ap = c.hotspotManual!;
+    Widget row(String label, String value) => Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Row(children: [
+            SizedBox(width: 92, child: Text(label, style: const TextStyle(fontSize: 13, color: Clay.sub))),
+            Expanded(
+                child: SelectableText(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+          ]),
+        );
+    return ListView(children: [
+      ClayStep(S.t('step_connect')),
+      const SizedBox(height: 18),
+      ClaySurface(
+        radius: 26,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(S.t('hotspot_manual_title'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text(S.t('hotspot_manual_body'), style: const TextStyle(fontSize: 14, height: 1.45, color: Clay.sub)),
+          row(S.t('hotspot_network'), ap.ssid),
+          row(S.t('hotspot_password'), ap.psk),
+        ]),
+      ),
+      const SizedBox(height: 28),
+      ClayPrimaryButton(
+          onPressed: c.continueManualJoin, icon: Icons.arrow_forward_rounded, label: S.t('hotspot_continue')),
+    ]);
+  }
+}

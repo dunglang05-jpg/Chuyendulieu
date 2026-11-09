@@ -12,6 +12,7 @@ import 'dart:io';
 import 'dart:math' show max;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:path/path.dart' as p;
 import 'package:ptp_platform/ptp_platform.dart';
 
@@ -90,6 +91,22 @@ class MigrationController extends ChangeNotifier {
   double? get pathWifiMbps => _policy.wifiMbps;
   double? get pathCableMbps => _policy.cableMbps;
   bool _usbArmed = false;
+
+  // "Điểm phát" (direct phone-to-phone Wi-Fi). NOT TESTED ON DEVICES.
+  bool _hotspotOn = false; // this phone created the app-only hotspot
+  bool _hotspotJoined = false; // this phone joined the other phone's hotspot
+
+  /// iPhone without the Hotspot Configuration entitlement: show name/password for a manual join, then continue.
+  HotspotInfo? hotspotManual;
+
+  /// Band of the direct link this phone created or joined: '5' | '2' | 'a' (unknown). Null when not in that mode.
+  String? hotspotBand;
+  String? _manualUri;
+
+  /// Router Wi-Fi link rate below [slowWifiMbps] (Mbps) on THIS phone: shown as a hint during the transfer
+  /// (device test 2026-11-09: a 54 Mbps link capped the transfer at ~3.5 MB/s).
+  int? slowWifiMbps;
+  static const int slowWifiThreshold = 150;
 
   /// "Tự động" is active on this session (both phones Android, USB supported) and waiting for / using a cable.
   bool get cableArmed => _usbArmed;
@@ -369,7 +386,7 @@ class MigrationController extends ChangeNotifier {
       return;
     }
     if (_paired && e.code.resumable && !sm.state.isTerminal) {
-      _startReconnect();
+      _startReconnect(e.code);
     } else {
       _fail(e);
     }
@@ -378,7 +395,7 @@ class MigrationController extends ChangeNotifier {
   // ------------------------------------------------------------------ pairing
   /// This device shows the QR. [myRole] is its data role.
   /// [mode]: 'wifi' | 'usb' | 'auto'; null keeps the current choice (e.g. "new code").
-  Future<void> showQr(String myRole, {String? mode}) async {
+  Future<void> showQr(String myRole, {String? mode, bool force24 = false}) async {
     final m = mode ?? transport;
     await _closePrevious();
     _resetSession(myRole);
@@ -388,10 +405,15 @@ class MigrationController extends ChangeNotifier {
       _go(MigrationState.discovering);
       final caps = await _caps(myRole);
       if (usb) await _requireUsb();
+      HotspotInfo? ap;
+      var apHosts = const <String>[];
+      if (m == 'hotspot') (ap, apHosts) = await _startHotspot(force24: force24);
       final cont = await _contCandidatesForWorker();
       await _startWorker();
       _isHost = true;
       _worker!.send('host', {
+        'ap': ap?.toJson(),
+        'apHosts': apHosts,
         'cont': cont,
         'role': myRole,
         'device': _device,
@@ -410,33 +432,136 @@ class MigrationController extends ChangeNotifier {
       final qr = QrPayload.parse(uri);
       await _closePrevious();
       _resetSession(qr.hostRole == 'receiver' ? 'sender' : 'receiver');
-      transport = qr.flags.contains('usb') ? 'usb' : (qr.flags.contains(usbAutoFlag) ? 'auto' : 'wifi');
+      transport = qr.ap != null
+          ? 'hotspot'
+          : qr.flags.contains('usb')
+              ? 'usb'
+              : (qr.flags.contains(usbAutoFlag) ? 'auto' : 'wifi');
       _wifiQr = qr;
       _go(MigrationState.discovering);
-      final caps = await _caps(role);
-      var dial = uri;
-      if (transport == 'usb') {
-        await _requireUsb();
-        final port = await _startUsb('listen', 0, waitConnected: true);
-        // Same session id, fingerprint and expiry; only the endpoint changes to the local USB bridge.
-        dial = QrPayload(
-                version: qr.version,
-                sid: qr.sid,
-                expiresAt: qr.expiresAt,
-                endpoints: ['127.0.0.1:$port'],
-                fingerprint: qr.fingerprint,
-                hostRole: qr.hostRole,
-                platform: qr.platform,
-                flags: qr.flags)
-            .toUri();
+      if (qr.ap != null) {
+        final gw = await _joinHotspot(qr.ap!);
+        if (gw == null) {
+          // iPhone could not join by itself: the user joins in Settings, then taps "continue".
+          hotspotManual = qr.ap;
+          _manualUri = uri;
+          notifyListeners();
+          return;
+        }
+        await _finishJoin(qr, _withGateway(qr, gw));
+        return;
       }
-      _go(MigrationState.pairing);
-      final cont = await _contCandidatesForWorker();
-      await _startWorker();
-      _isHost = false;
-      _worker!.send('join', {'uri': dial, 'device': _device, 'caps': caps, 'cont': cont});
+      await _finishJoin(qr, uri);
     } on PtpException catch (e) {
       _fail(e);
+    }
+  }
+
+  /// After a manual join of the host's hotspot (iPhone fallback).
+  Future<void> continueManualJoin() async {
+    final uri = _manualUri;
+    if (uri == null) return;
+    hotspotManual = null;
+    _manualUri = null;
+    notifyListeners();
+    try {
+      final qr = QrPayload.parse(uri);
+      await _finishJoin(qr, uri);
+    } on PtpException catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// The joiner reaches the host through the hotspot's gateway first (Android reports it), then the QR's list.
+  String _withGateway(QrPayload qr, String gw) {
+    if (InternetAddress.tryParse(gw)?.type != InternetAddressType.IPv4) return qr.toUri();
+    final port = Endpoint.parse(qr.endpoints.first).port;
+    return qr.withEndpoints({'$gw:$port', ...qr.endpoints}.take(8).toList()).toUri();
+  }
+
+  Future<void> _finishJoin(QrPayload qr, String uri) async {
+    final caps = await _caps(role);
+    var dial = uri;
+    if (transport == 'usb') {
+      await _requireUsb();
+      final port = await _startUsb('listen', 0, waitConnected: true);
+      // Same session id, fingerprint and expiry; only the endpoint changes to the local USB bridge.
+      dial = QrPayload(
+              version: qr.version,
+              sid: qr.sid,
+              expiresAt: qr.expiresAt,
+              endpoints: ['127.0.0.1:$port'],
+              fingerprint: qr.fingerprint,
+              hostRole: qr.hostRole,
+              platform: qr.platform,
+              flags: qr.flags)
+          .toUri();
+    }
+    _go(MigrationState.pairing);
+    final cont = await _contCandidatesForWorker();
+    await _startWorker();
+    _isHost = false;
+    _worker!.send('join', {'uri': dial, 'device': _device, 'caps': caps, 'cont': cont});
+  }
+
+  /// Host side of "Điểm phát": permission in context, then an app-only hotspot (Android).
+  Future<(HotspotInfo, List<String>)> _startHotspot({bool force24 = false}) async {
+    if (!Platform.isAndroid) throw PtpException(PtpErrorCode.platformRestriction, 'HOTSPOT_UNSUPPORTED');
+    await _requireNearbyWifi();
+    try {
+      final r = await PtpPlatform.hotspotStart(force24: force24);
+      _hotspotOn = true;
+      final ap = HotspotInfo.parse({'s': r['ssid'], 'k': r['psk'], 'sec': r['sec'], 'm': r['mode'], 'b': r['band']});
+      hotspotBand = ap.band;
+      final ips = ((r['ips'] as List<Object?>?) ?? const []).whereType<String>().toList();
+      // Never log the name or password.
+      _log.event('hotspot', {'state': 'started', 'status': '${ap.mode}_${ap.band}', 'count': ips.length});
+      return (ap, ips);
+    } on PlatformException catch (e) {
+      _log.event('hotspot', {'state': 'failed', 'code': e.code});
+      throw PtpException(PtpErrorCode.platformRestriction, e.code);
+    }
+  }
+
+  /// Joiner side. Returns the gateway ('' if unknown) or null when an iPhone must join manually.
+  Future<String?> _joinHotspot(HotspotInfo ap) async {
+    if (Platform.isAndroid) await _requireNearbyWifi();
+    try {
+      final gw = await PtpPlatform.hotspotJoin(ap.ssid, ap.psk, ap.sec, mode: ap.mode, band: ap.band);
+      _hotspotJoined = true;
+      hotspotBand = ap.band;
+      _log.event('hotspot', {'state': 'joined', 'status': '${ap.mode}_${ap.band}'});
+      return gw;
+    } on PlatformException catch (e) {
+      _log.event('hotspot', {'state': 'join_failed', 'code': e.code});
+      if (Platform.isIOS && e.code != 'HOTSPOT_JOIN_DENIED') return null;
+      throw PtpException(PtpErrorCode.platformRestriction, e.code);
+    }
+  }
+
+  Future<void> _requireNearbyWifi() async {
+    String r;
+    try {
+      r = await PtpPlatform.requestPermission('nearbyWifi', forImport: false);
+    } catch (_) {
+      r = 'denied';
+    }
+    _log.event('permission', {'category': 'nearbyWifi', 'perm': r});
+    if (r != 'granted') throw PtpException(PtpErrorCode.platformRestriction, 'HOTSPOT_PERMISSION');
+  }
+
+  Future<void> _hotspotOff() async {
+    if (_hotspotOn) {
+      _hotspotOn = false;
+      try {
+        await PtpPlatform.hotspotStop();
+      } catch (_) {}
+    }
+    if (_hotspotJoined) {
+      _hotspotJoined = false;
+      try {
+        await PtpPlatform.hotspotLeave();
+      } catch (_) {}
     }
   }
 
@@ -606,6 +731,7 @@ class MigrationController extends ChangeNotifier {
       _go(MigrationState.preview);
       _go(MigrationState.preparing);
       await _requestNotifications();
+      await _ensureBackground();
       await PtpPlatform.setTransferActive(true);
       _startDeviceMonitor();
       _sendStarted = DateTime.now();
@@ -617,6 +743,7 @@ class MigrationController extends ChangeNotifier {
     } else {
       _go(MigrationState.preparing);
       await _requestNotifications();
+      await _ensureBackground();
       await PtpPlatform.setTransferActive(true);
       _startDeviceMonitor();
       _sendStarted = DateTime.now();
@@ -715,6 +842,7 @@ class MigrationController extends ChangeNotifier {
       ..totalBytes = selectedBytesHint;
     _go(MigrationState.preparing);
     await _requestNotifications();
+    await _ensureBackground();
     await PtpPlatform.setTransferActive(true);
     _startDeviceMonitor();
     _sendStarted = DateTime.now();
@@ -920,6 +1048,7 @@ class MigrationController extends ChangeNotifier {
     final w = _worker;
     _worker = null;
     if (w != null) await w.dispose();
+    await _hotspotOff();
   }
 
   /// Copies the diagnostic log to Downloads (Android) / Files (iOS). Returns where it went.
@@ -966,9 +1095,9 @@ class MigrationController extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------------ resume
-  void _startReconnect() {
+  void _startReconnect([PtpErrorCode? cause]) {
     reconnecting = true;
-    _log.event('reconnect_start', {'role': role, 'state': _isHost ? 'host' : 'joiner'});
+    _log.event('reconnect_start', {'role': role, 'state': _isHost ? 'host' : 'joiner', 'code': cause?.wire});
     _go(MigrationState.failed);
     _worker?.send('reconnect');
     notifyListeners();
@@ -1038,10 +1167,49 @@ class MigrationController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True while Android battery optimisation still applies to this app (screen-off transfers may be cut).
+  bool backgroundRestricted = false;
+  bool _askedBackground = false;
+
+  /// User request (2026-11-09): keep running with the screen off. Asks the system ONCE per app run to exempt the
+  /// app from battery optimisation; the foreground service + wake/Wi-Fi locks do the rest. Refusal is respected.
+  Future<void> _ensureBackground() async {
+    try {
+      final st = await PtpPlatform.backgroundStatus();
+      backgroundRestricted = st['ignoringBatteryOptimizations'] != true;
+      if (backgroundRestricted && !_askedBackground) {
+        _askedBackground = true;
+        final r = await PtpPlatform.requestBackground();
+        _log.event('background', {'status': r, 'model': st['manufacturer']});
+      }
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> openBatterySettings() => PtpPlatform.openBatterySettings();
+
   /// Pauses on serious/critical thermal state; warns on low battery. Values come from the OS, not estimates.
   void _startDeviceMonitor() {
     _deviceTimer?.cancel();
     _deviceTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      try {
+        final bg = await PtpPlatform.backgroundStatus();
+        final restricted = bg['ignoringBatteryOptimizations'] != true;
+        if (restricted != backgroundRestricted) {
+          backgroundRestricted = restricted;
+          notifyListeners();
+        }
+      } catch (_) {}
+      if (transport == 'wifi' || (transport == 'auto' && !onCable)) {
+        try {
+          final mbps = await PtpPlatform.wifiLinkMbps();
+          final slow = mbps > 0 && mbps < slowWifiThreshold ? mbps : null;
+          if ((slow == null) != (slowWifiMbps == null)) _log.event('wifi_link', {'linkMbps': mbps});
+          slowWifiMbps = slow;
+        } catch (_) {}
+      } else {
+        slowWifiMbps = null;
+      }
       try {
         final st = await PtpPlatform.deviceState();
         final hot = st['thermal'] == 'serious' || st['thermal'] == 'critical';
@@ -1168,6 +1336,10 @@ class MigrationController extends ChangeNotifier {
     switchingPath = false;
     _usbArmed = false;
     _wifiQr = null;
+    hotspotManual = null;
+    _manualUri = null;
+    hotspotBand = null;
+    slowWifiMbps = null;
     _policy.reset();
     usbState = null;
     usbRole = null;

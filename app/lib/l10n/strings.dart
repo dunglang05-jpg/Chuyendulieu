@@ -26,6 +26,11 @@ class S {
       'vi': 'Máy mới đã thiết lập xong rồi? Các công cụ này thường chỉ chạy lúc thiết lập ban đầu (một số máy cho phép trong vài ngày đầu). Nếu không, phải khôi phục cài đặt gốc máy mới — hãy sao lưu trước — hoặc cài lại từng app từ CH Play / App Store.',
       'en': 'Already set up the new phone? These tools usually run only during first setup (some phones allow it for a few days). Otherwise the new phone must be reset — back it up first — or reinstall apps one by one from the store.'
     },
+    'bg_restricted': {
+      'vi': 'Ứng dụng chưa được phép chạy nền không giới hạn: khi tắt màn hình, máy có thể ngắt kết nối. Hãy cho phép, và trên Xiaomi/OPPO/vivo/Realme bật thêm "Tự khởi chạy" / "Cho phép chạy nền" cho Chuyển dữ liệu.',
+      'en': 'The app is not allowed to run unrestricted in the background: with the screen off the phone may drop the connection. Allow it, and on Xiaomi/OPPO/vivo/Realme also enable "Autostart" / "Allow background activity".'
+    },
+    'bg_open_settings': {'vi': 'Mở cài đặt pin', 'en': 'Open battery settings'},
     'history_empty': {'vi': 'Chưa có lần chuyển nào', 'en': 'No transfers yet'},
     'cont_banner_title': {'vi': 'Có lần chuyển chưa xong', 'en': 'An unfinished transfer'},
     'cont_banner_body': {
@@ -117,7 +122,7 @@ class S {
     'report_action': {'vi': '{n} mục cần bạn thao tác', 'en': '{n} items need your action'},
     'delete_partial': {'vi': 'Xóa dữ liệu tạm', 'en': 'Delete partial data'},
     'finish': {'vi': 'Xong', 'en': 'Done'},
-    'transport_wifi': {'vi': 'Wi-Fi / mạng', 'en': 'Wi-Fi / LAN'},
+    'transport_wifi': {'vi': 'Wi-Fi chung', 'en': 'Same Wi-Fi'},
     'transport_usb': {'vi': 'Chỉ cáp', 'en': 'Cable only'},
     'transport_auto': {'vi': 'Tự động', 'en': 'Auto'},
     'auto_hint': {
@@ -171,6 +176,79 @@ class S {
     'usb_err_PROTOCOL_VERSION_MISMATCH': {'vi': 'Hai máy dùng phiên bản ứng dụng khác nhau.', 'en': 'The two phones run different app versions.'},
     'usb_err_LINK_LOST': {'vi': 'Mất kết nối cáp. Cắm lại để tiếp tục.', 'en': 'Cable link lost. Replug to continue.'},
     'usb_err_generic': {'vi': 'Lỗi cáp USB ({code}).', 'en': 'USB cable error ({code}).'},
+    'transport_hotspot': {'vi': 'Điểm phát', 'en': 'Direct'},
+    'hotspot_hint': {
+      'vi': 'Không cần chung Wi-Fi: chỉ cần bật Wi-Fi trên hai máy. Máy hiện mã tự phát Wi-Fi riêng (tự dùng 5 GHz '
+          'nếu máy hỗ trợ), máy quét mã tự vào. Máy hiện mã phải là Android. Thử nghiệm — chưa kiểm tra trên máy thật.',
+      'en': 'No shared Wi-Fi needed, just Wi-Fi switched on. The phone showing the code creates its own Wi-Fi (5 GHz '
+          'when supported) and the scanning phone joins it. The phone showing the code must be Android. '
+          'Experimental — not yet tested on real phones.'
+    },
+    'hotspot_qr_note': {
+      'vi': 'Đang phát Wi-Fi riêng {band}cho lần chuyển này. Máy kia chỉ cần bật Wi-Fi và quét mã.',
+      'en': 'Sharing a private {band}Wi-Fi for this transfer. The other phone only needs Wi-Fi on and to scan.'
+    },
+    'hotspot_use_24': {'vi': 'Máy kia không vào được? Dùng 2,4 GHz', 'en': 'Other phone can’t join? Use 2.4 GHz'},
+    'ios_scan_hint': {
+      'vi': 'Muốn chuyển không cần chung Wi-Fi: để máy Android hiện mã (chế độ Điểm phát), iPhone quét mã.',
+      'en': 'To transfer without shared Wi-Fi, let the Android phone show the code (Direct mode) and scan it here.'
+    },
+    'hs_err_HOTSPOT_WIFI_OFF': {
+      'vi': 'Hãy bật Wi-Fi (không cần vào mạng nào) rồi thử lại.',
+      'en': 'Turn Wi-Fi on (no need to join any network) and try again.'
+    },
+    'hs_err_HOTSPOT_NO_5GHZ': {
+      'vi': 'Máy này không hỗ trợ Wi-Fi 5 GHz. Trên máy hiện mã, bấm “Dùng 2,4 GHz” rồi quét lại.',
+      'en': 'This phone has no 5 GHz Wi-Fi. On the other phone tap “Use 2.4 GHz”, then scan again.'
+    },
+    'hs_err_HOTSPOT_BUSY': {
+      'vi': 'Wi-Fi của máy đang bận (có thể đang dùng Wi-Fi Direct/chia sẻ màn hình). Tắt rồi thử lại.',
+      'en': 'Wi-Fi is busy (Wi-Fi Direct or screen sharing may be in use). Stop it and try again.'
+    },
+    'hs_err_HOTSPOT_FAILED': {
+      'vi': 'Không tạo được Wi-Fi riêng. Hãy tắt/bật Wi-Fi rồi thử lại, hoặc chọn “Wi-Fi chung”.',
+      'en': 'Could not create the direct Wi-Fi. Toggle Wi-Fi and retry, or choose “Same Wi-Fi”.'
+    },
+    'hotspot_manual_title': {'vi': 'Vào Wi-Fi của máy kia', 'en': 'Join the other phone’s Wi-Fi'},
+    'hotspot_manual_body': {
+      'vi': 'iPhone chưa tự vào được. Mở Cài đặt › Wi-Fi, chọn mạng dưới đây, nhập mật khẩu, rồi quay lại bấm Tiếp tục.',
+      'en': 'The iPhone could not join by itself. Open Settings › Wi-Fi, pick the network below, enter the password, '
+          'then come back and tap Continue.'
+    },
+    'hotspot_network': {'vi': 'Tên mạng', 'en': 'Network'},
+    'hotspot_password': {'vi': 'Mật khẩu', 'en': 'Password'},
+    'hotspot_continue': {'vi': 'Đã vào mạng, tiếp tục', 'en': 'Joined, continue'},
+    'slow_wifi': {
+      'vi': 'Wi-Fi của máy này đang kết nối chậm ({mbps} Mbps) nên tốc độ chuyển bị giới hạn. '
+          'Hãy lại gần router, tắt/bật Wi-Fi, hoặc dùng chế độ “Điểm phát”.',
+      'en': 'This phone’s Wi-Fi link is slow ({mbps} Mbps), which limits the transfer. '
+          'Move closer to the router, toggle Wi-Fi, or use “Direct” mode.'
+    },
+    'hs_err_HOTSPOT_PERMISSION': {
+      'vi': 'Cần quyền “Thiết bị lân cận” (hoặc Vị trí trên Android 12 trở xuống) để tạo/vào Wi-Fi trực tiếp.',
+      'en': 'The Nearby devices permission (Location on Android 12 and older) is needed for direct Wi-Fi.'
+    },
+    'hs_err_HOTSPOT_INCOMPATIBLE_MODE': {
+      'vi': 'Điểm phát sóng của máy đang bật. Hãy tắt điểm phát sóng trong Cài đặt rồi thử lại.',
+      'en': 'The phone’s own hotspot is on. Turn it off in Settings and try again.'
+    },
+    'hs_err_HOTSPOT_DISALLOWED': {
+      'vi': 'Máy này không cho phép ứng dụng tạo điểm phát (chính sách thiết bị). Hãy dùng Wi-Fi thường.',
+      'en': 'This phone does not allow apps to create a hotspot (device policy). Use normal Wi-Fi.'
+    },
+    'hs_err_HOTSPOT_JOIN_FAILED': {
+      'vi': 'Không vào được Wi-Fi của máy kia. Hãy để hai máy gần nhau, bấm “Kết nối” khi được hỏi, rồi thử lại.',
+      'en': 'Could not join the other phone’s Wi-Fi. Keep the phones close, tap Connect when asked, and retry.'
+    },
+    'hs_err_HOTSPOT_JOIN_DENIED': {
+      'vi': 'Bạn đã từ chối kết nối Wi-Fi của máy kia.',
+      'en': 'You declined to join the other phone’s Wi-Fi.'
+    },
+    'hs_err_HOTSPOT_UNSUPPORTED': {
+      'vi': 'Máy này không tạo được điểm phát từ ứng dụng. Hãy để máy Android hiện mã QR.',
+      'en': 'This phone cannot create a hotspot from an app. Let the Android phone show the QR code.'
+    },
+    'hs_err_generic': {'vi': 'Lỗi Wi-Fi trực tiếp ({code}).', 'en': 'Direct Wi-Fi error ({code}).'},
     'export_log': {'vi': 'Xuất log chẩn đoán (không chứa dữ liệu cá nhân)', 'en': 'Export diagnostic log (no personal data)'},
     'log_saved': {'vi': 'Đã lưu log vào: {where}', 'en': 'Log saved to: {where}'},
     'import_denied': {

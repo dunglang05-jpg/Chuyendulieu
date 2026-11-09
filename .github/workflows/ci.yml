@@ -108,6 +108,9 @@ jobs:
       - run: bash tool/bootstrap.sh
       - name: Build iOS without code signing
         run: flutter build ios --debug --no-codesign
+      - name: Show Xcode compile errors (only when the iOS build failed)
+        if: failure()
+        run: flutter build ios --debug --no-codesign --verbose 2>&1 | grep -E "error:|Error:" | grep -v "^\s*$" | head -60 || true
       - name: iOS pods — is Google ML Kit / DataTransport linked? (audit P1-8, evidence only)
         if: success() || failure()
         run: |

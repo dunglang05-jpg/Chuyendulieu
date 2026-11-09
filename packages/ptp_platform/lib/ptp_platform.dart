@@ -97,6 +97,16 @@ class PtpPlatform {
 
   static Future<void> openAppSettings() => _call<void>('openAppSettings');
 
+  /// Android: {ignoringBatteryOptimizations, manufacturer}. iOS always reports true (not applicable).
+  static Future<Map<String, Object?>> backgroundStatus() async =>
+      Map<String, Object?>.from(await _call<Map>('backgroundStatus'));
+
+  /// Android: shows the system dialog "let the app always run in background?" once. granted | asked | unavailable.
+  static Future<String> requestBackground() async => await _call<String>('requestBackground');
+
+  /// Android: battery optimisation list in Settings (fallback: app details).
+  static Future<void> openBatterySettings() => _call<void>('openBatterySettings');
+
   /// USB-C cable link (Android ↔ Android via AOA). iOS always reports supported=false.
   /// {supported, hostSupported, accessorySupported, state: idle|waiting|permission|switching|connected|failed|stopped,
   ///  role: usb_host|usb_accessory|null, error, bridgePort}
@@ -131,4 +141,29 @@ class PtpPlatform {
   static Future<String?> vaultGet(String name) async => await _call<String?>('vaultGet', {'name': name});
 
   static Future<void> vaultDelete(String name) => _call<void>('vaultDelete', {'name': name});
+
+  /// "Điểm phát" host (Android only): app-scoped hotspot without Internet sharing.
+  /// Wi-Fi Direct group on 5 GHz when this phone supports it (2.4 GHz with [force24]), else a local-only hotspot.
+  /// Returns {ssid, psk, sec: wpa2|wpa3, mode: p2p|ap, band: 5|2|a, ips: [host IPv4]}. Also HOTSPOT_WIFI_OFF,
+  /// HOTSPOT_BUSY. Throws PlatformException with codes
+  /// HOTSPOT_PERMISSION | HOTSPOT_INCOMPATIBLE_MODE | HOTSPOT_DISALLOWED | HOTSPOT_NO_CHANNEL | HOTSPOT_FAILED |
+  /// HOTSPOT_UNSUPPORTED (iOS). The name/password must never be logged.
+  static Future<Map<String, Object?>> hotspotStart({bool force24 = false}) async =>
+      Map<String, Object?>.from(await _call<Map>('hotspotStart', {'force24': force24}));
+
+  static Future<void> hotspotStop() => _call<void>('hotspotStop');
+
+  /// "Điểm phát" joiner: connects to the host's hotspot (system dialog) and routes this app's sockets over it.
+  /// Returns the host's gateway IPv4 when known, else ''. Codes: HOTSPOT_JOIN_FAILED | HOTSPOT_JOIN_DENIED |
+  /// HOTSPOT_PERMISSION | HOTSPOT_WIFI_OFF | HOTSPOT_NO_5GHZ. [mode]/[band] come from the QR.
+  static Future<String> hotspotJoin(String ssid, String psk, String sec,
+          {String mode = 'ap', String band = 'a', int timeoutMs = 60000}) async =>
+      (await _call<String?>('hotspotJoin',
+          {'ssid': ssid, 'psk': psk, 'sec': sec, 'mode': mode, 'band': band, 'timeoutMs': timeoutMs})) ??
+      '';
+
+  static Future<void> hotspotLeave() => _call<void>('hotspotLeave');
+
+  /// Link rate of the current router Wi-Fi in Mbps, -1 when unknown (always -1 on iOS).
+  static Future<int> wifiLinkMbps() async => (await _call<int?>('wifiLinkMbps')) ?? -1;
 }

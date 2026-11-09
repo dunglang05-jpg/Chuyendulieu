@@ -102,7 +102,9 @@ class PtpHost {
       required this.caps,
       required this.identity,
       this.loopbackOnly = false,
-      this.flags = const []})
+      this.flags = const [],
+      this.ap,
+      this.preferredHosts = const []})
       : sid = randomBytes(16),
         expiresAt = DateTime.now().add(qrTtl);
 
@@ -117,6 +119,12 @@ class PtpHost {
 
   /// Non-sensitive QR feature flags, e.g. 'usb' tells the scanner to connect through the cable.
   final List<String> flags;
+
+  /// "Điểm phát": the app-only hotspot this phone created; goes into the QR so the other phone can join it.
+  final HotspotInfo? ap;
+
+  /// Addresses to advertise first (the hotspot interface), so the joiner does not wait on unreachable ones.
+  final List<String> preferredHosts;
   final Uint8List sid;
   DateTime expiresAt;
 
@@ -136,7 +144,16 @@ class PtpHost {
     _server = await SecureServerSocket.bind(
         loopbackOnly ? InternetAddress.loopbackIPv4 : InternetAddress.anyIPv4, port, identity.serverContext());
     _server!.listen(_handle, onError: (Object _) {});
-    endpoints = loopbackOnly ? ['127.0.0.1:${_server!.port}'] : await localEndpoints(_server!.port);
+    if (loopbackOnly) {
+      endpoints = ['127.0.0.1:${_server!.port}'];
+    } else {
+      final found = await localEndpoints(_server!.port);
+      final first = [
+        for (final h in preferredHosts)
+          if (InternetAddress.tryParse(h)?.type == InternetAddressType.IPv4) '$h:${_server!.port}'
+      ];
+      endpoints = {...first, ...found}.take(8).toList();
+    }
     _chIt = StreamIterator(_channels.stream);
   }
 
@@ -151,6 +168,7 @@ class PtpHost {
         hostRole: role,
         platform: device.platform,
         flags: flags,
+        ap: ap,
       );
 
   /// Waits for the next authenticated channel (first pairing or a resume).

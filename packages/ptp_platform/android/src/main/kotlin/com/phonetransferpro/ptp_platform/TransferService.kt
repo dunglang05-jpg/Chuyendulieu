@@ -20,6 +20,7 @@ import androidx.core.app.ServiceCompat
 class TransferService : Service() {
     private var wake: PowerManager.WakeLock? = null
     private var wifi: WifiManager.WifiLock? = null
+    private var wifiHighPerf: WifiManager.WifiLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -37,8 +38,15 @@ class TransferService : Service() {
         if (wake == null) {
             wake = (getSystemService(Context.POWER_SERVICE) as PowerManager)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ptp:transfer").apply { acquire(6 * 60 * 60 * 1000L) }
-            wifi = (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager)
-                .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "ptp:transfer").apply { acquire() }
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            // LOW_LATENCY only applies while the app is in front with the screen on; with the screen off the
+            // HIGH_PERF lock is what keeps Wi-Fi from power-saving (device test: link dropped with the screen off).
+            wifi = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "ptp:transfer").apply { acquire() }
+            @Suppress("DEPRECATION")
+            wifiHighPerf = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ptp:transfer-bg").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
         }
         return START_NOT_STICKY
     }
@@ -54,6 +62,7 @@ class TransferService : Service() {
     override fun onDestroy() {
         wake?.takeIf { it.isHeld }?.release()
         wifi?.takeIf { it.isHeld }?.release()
+        wifiHighPerf?.takeIf { it.isHeld }?.release()
         super.onDestroy()
     }
 
