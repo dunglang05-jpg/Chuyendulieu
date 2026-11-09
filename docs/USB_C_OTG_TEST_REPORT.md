@@ -19,6 +19,11 @@ Lỗi thật được test bắt và đã sửa: bridge ghi tên lớp exception
 
 **Những gì test tự động KHÔNG chứng minh:** bắt tay AOA, quyền USB, endpoint bulk thật, hành vi gói ngắn trên phần cứng, tốc độ, pin, nhiệt độ, chạy khi tắt màn hình.
 
+**Cập nhật — chế độ Tự động (commit d67f54f), CI run 42555105872, tất cả job success:** `flutter analyze` No issues
+found; test Dart **34/34 pass** (thêm 7 test quyết định đổi đường và 1 test đổi đường giữa một tệp 24 MB qua hai bộ
+chuyển tiếp TCP cục bộ, SHA-256 khớp, không phải xác nhận mã 6 số lần hai); JVM Kotlin BUILD SUCCESSFUL; iOS build OK.
+Vẫn **không** chứng minh tốc độ cáp hay phần cứng USB.
+
 ## 2. Ma trận thiết bị
 
 | Chiều | Phương thức | Trạng thái |
