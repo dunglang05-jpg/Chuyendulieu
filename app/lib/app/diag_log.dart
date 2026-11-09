@@ -18,6 +18,7 @@ class DiagLog {
     'status', 'bytes', 'files', 'ok', 'failed', 'skipped', 'ms', 'mbps', 'batch', 'batches', 'attempt',
     'thermal', 'battery', 'charging', 'count', 'resumed', 'more', 'needed', 'free', 'endpoints', 'version',
     'reason', 'wifiMbps', 'cableMbps',
+    't_read', 't_hash', 't_wait', 't_send', 't_net', 't_write', 't_sync', 't_open', 't_commit',
   };
 
   /// Values: numbers/bools, or ≤ 48 chars of letters, digits, space and `._:-+()`. Rejects '/', '@', '\',

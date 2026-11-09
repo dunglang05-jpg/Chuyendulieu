@@ -93,10 +93,24 @@ class HomeScreen extends StatelessWidget {
                   icon: Icons.history_rounded,
                   label: S.t('history'),
                   onTap: () => Navigator.of(context)
-                      .push(MaterialPageRoute<void>(builder: (_) => HistoryScreen(db: controller.db))),
+                      .push(MaterialPageRoute<void>(builder: (_) => HistoryScreen(db: controller.db, controller: controller))),
                 ),
               ),
             ]),
+            const SizedBox(height: 16),
+            ClaySurface(
+              radius: 24,
+              depth: 6,
+              padding: const EdgeInsets.all(16),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => AppsGuideScreen(myPlatform: Theme.of(context).platform == TargetPlatform.iOS ? 'ios' : 'android'))),
+              child: Row(children: [
+                const Icon(Icons.apps_rounded, color: Clay.accent, size: 22),
+                const SizedBox(width: 12),
+                Expanded(child: Text(S.t('apps_tile'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
+                const Icon(Icons.chevron_right_rounded, color: Clay.sub),
+              ]),
+            ),
             const SizedBox(height: 30),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               const Icon(Icons.lock_outline_rounded, size: 14, color: Clay.sub),
@@ -106,6 +120,8 @@ class HomeScreen extends StatelessWidget {
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Clay.sub)),
               ),
             ]),
+            const SizedBox(height: 4),
+            Center(child: exportLogButton(context, controller)),
           ],
         ),
         ),

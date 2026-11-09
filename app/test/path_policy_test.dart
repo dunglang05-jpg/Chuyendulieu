@@ -79,6 +79,27 @@ void main() {
       expect(p.cableMbps, isNull);
     });
 
+    test('cable that carries no data is given up after the trial + grace, even while not transferring', () {
+      final p = PathPolicy();
+      feed(p, 0, 5000, 20, 0);
+      p.onCableState(true);
+      expect(p.tick(at(5000), transferring: true), PathAction.toCable);
+      expect(p.tick(at(25000), transferring: false), PathAction.none, reason: 'still inside 3 + 8 + 10 s');
+      expect(p.tick(at(26500), transferring: false), PathAction.toWifi);
+      expect(p.reason, PathReason.cableNoData);
+      expect(p.cableRejected, isTrue);
+    });
+
+    test('a cable that measured ~0 MB/s is reported as not carrying data, not as slower', () {
+      final p = PathPolicy();
+      var b = feed(p, 0, 5000, 20, 0);
+      p.onCableState(true);
+      p.tick(at(5000), transferring: true);
+      feed(p, 5000, 12000, 0, b);
+      expect(p.tick(at(17000), transferring: true), PathAction.toWifi);
+      expect(p.reason, PathReason.cableNoData);
+    });
+
     test('Wi-Fi rate unknown (cable plugged right at the start) → cable is kept, never compared to a guess', () {
       final p = PathPolicy();
       p.onCableState(true);

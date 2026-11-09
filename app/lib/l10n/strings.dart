@@ -13,6 +13,19 @@ class S {
   static const Map<String, Map<String, String>> _s = {
     'app_title': {'vi': 'Chuyển dữ liệu', 'en': 'Chuyển dữ liệu'},
     'send': {'vi': 'Gửi dữ liệu', 'en': 'Send data'},
+    'apps_title': {'vi': 'Chuyển ứng dụng', 'en': 'Move apps'},
+    'apps_tile': {'vi': 'Chuyển ứng dụng', 'en': 'Move apps'},
+    'apps_tile_sub': {'vi': 'Bằng công cụ chính thức của Google / Apple', 'en': 'With Google\'s / Apple\'s official tool'},
+    'apps_why': {
+      'vi': 'Chỉ ứng dụng hệ thống của hãng (như Smart Switch) mới tự cài app không cần hỏi. Cách chính thức và tự động nhất là công cụ của Google/Apple lúc thiết lập máy mới — hướng dẫn bên dưới. Sau đó dùng Chuyển dữ liệu cho tài liệu và phần còn lại.',
+      'en': 'Only the phone maker\'s system apps (like Smart Switch) can install apps without asking. The official, automatic way is Google\'s / Apple\'s tool during the new phone\'s setup — steps below. Then use Chuyển dữ liệu for documents and the rest.'
+    },
+    'apps_moves': {'vi': 'Chuyển được', 'en': 'Moves'},
+    'apps_not_moves': {'vi': 'Không chuyển được', 'en': 'Does not move'},
+    'apps_after_setup': {
+      'vi': 'Máy mới đã thiết lập xong rồi? Các công cụ này thường chỉ chạy lúc thiết lập ban đầu (một số máy cho phép trong vài ngày đầu). Nếu không, phải khôi phục cài đặt gốc máy mới — hãy sao lưu trước — hoặc cài lại từng app từ CH Play / App Store.',
+      'en': 'Already set up the new phone? These tools usually run only during first setup (some phones allow it for a few days). Otherwise the new phone must be reset — back it up first — or reinstall apps one by one from the store.'
+    },
     'history_empty': {'vi': 'Chưa có lần chuyển nào', 'en': 'No transfers yet'},
     'cont_banner_title': {'vi': 'Có lần chuyển chưa xong', 'en': 'An unfinished transfer'},
     'cont_banner_body': {
@@ -119,6 +132,14 @@ class S {
     'path_cable_slower': {
       'vi': 'Cáp đo được {cable} MB/s, chậm hơn Wi-Fi ({wifi} MB/s), nên tiếp tục dùng Wi-Fi.',
       'en': 'The cable measured {cable} MB/s, slower than Wi-Fi ({wifi} MB/s), so Wi-Fi is kept.'
+    },
+    'path_cable_nodata': {
+      'vi': 'Cáp không truyền được dữ liệu (kết nối qua cáp chưa thành công) — tiếp tục dùng Wi-Fi. Rút ra cắm lại cáp để thử lại.',
+      'en': 'The cable carried no data (the cable link did not come up) — staying on Wi-Fi. Replug to try again.'
+    },
+    'reconnecting_auto': {
+      'vi': 'Đang kết nối lại — có thể do đang đổi giữa Wi-Fi và cáp…',
+      'en': 'Reconnecting — possibly switching between Wi-Fi and the cable…'
     },
     'path_cable_lost': {'vi': 'Đã rút cáp — tiếp tục qua Wi-Fi.', 'en': 'Cable unplugged — continuing over Wi-Fi.'},
     'usb_hint': {

@@ -9,6 +9,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show max;
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -324,10 +325,12 @@ class MigrationController extends ChangeNotifier {
         progress
           ..current = m['name'] as String
           ..doneBytes = _progressBase + wire;
-        if (role == 'sender') {
-          final secs = DateTime.now().difference(_sendStarted).inMilliseconds / 1000;
-          progress.mbps = secs > 0 ? (progress.doneBytes - _sendStartBytes) / 1e6 / secs : 0;
-        }
+        // Measured speed on BOTH phones (device test: the receiver showed none): bytes over the last 5 s;
+        // before 2 s of samples exist, the average since the start of this send/receive.
+        final now = DateTime.now();
+        _speed.add(now, progress.doneBytes);
+        final secs = now.difference(_sendStarted).inMilliseconds / 1000;
+        progress.mbps = _speed.rate(now) ?? (secs > 0 ? (progress.doneBytes - _sendStartBytes) / 1e6 / secs : 0);
         notifyListeners();
       case 'approve':
         final m = data as Map<String, Object?>;
@@ -351,6 +354,7 @@ class MigrationController extends ChangeNotifier {
   }
 
   int _sendStartBytes = 0;
+  final RateMeter _speed = RateMeter();
 
   void _onWorkerError(PtpException e) {
     final wait = _batchWait;
@@ -552,8 +556,9 @@ class MigrationController extends ChangeNotifier {
   /// Joiner only: feed real progress into the policy and carry out its decision.
   void _pathTick() {
     final now = DateTime.now();
-    _policy.onBytes(now, progress.doneBytes);
     final transferring = sm.state == MigrationState.transferring && !userPaused && !_thermalPaused && !reconnecting;
+    // Only real progress counts: no samples while paused / reconnecting, so a stall never reads as "0 MB/s".
+    if (transferring) _policy.onBytes(now, progress.doneBytes);
     final from = _policy.path;
     final action = _policy.tick(now, transferring: transferring);
     if (action == PathAction.none) return;
@@ -563,7 +568,7 @@ class MigrationController extends ChangeNotifier {
     // Preferred path first, the other one as a fallback for the reconnect loop.
     final eps = action == PathAction.toCable
         ? [usbEp, ...qr.endpoints]
-        : [...qr.endpoints, if (_policy.cableUp && _usbPort > 0) usbEp];
+        : [...qr.endpoints, if (_policy.cableUp && !_policy.cableRejected && _usbPort > 0) usbEp];
     final uri = QrPayload(
             version: qr.version,
             sid: qr.sid,
@@ -614,6 +619,9 @@ class MigrationController extends ChangeNotifier {
       await _requestNotifications();
       await PtpPlatform.setTransferActive(true);
       _startDeviceMonitor();
+      _sendStarted = DateTime.now();
+      _sendStartBytes = progress.doneBytes;
+      _speed.reset();
       _sendReceiveCommand();
     }
   }
@@ -892,6 +900,9 @@ class MigrationController extends ChangeNotifier {
         'bytes': r.wireBytes,
         'mbps': double.parse(r.mbPerSecond.toStringAsFixed(2)),
         'more': r.more,
+        'ms': r.elapsed.inMilliseconds,
+        // Where the time went (see TransferReport.timers); numbers only, no file names.
+        for (final e in r.timingsMs.entries) 't_${e.key}': e.value,
       });
 
   Future<void> _closePrevious() async {
@@ -913,6 +924,10 @@ class MigrationController extends ChangeNotifier {
 
   /// Copies the diagnostic log to Downloads (Android) / Files (iOS). Returns where it went.
   Future<String?> exportLog() async {
+    try {
+      // Possible from the home screen before any session: open the log folder first.
+      await _log.open(p.dirname(_inbox ?? await PtpPlatform.inboxDir()));
+    } catch (_) {}
     final snap = await _log.snapshot();
     if (snap == null) return null;
     final ts = DateTime.now().toUtc().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
@@ -1111,7 +1126,9 @@ class MigrationController extends ChangeNotifier {
         ok: okCount,
         failed: failedCount,
         skipped: skippedCount,
-        bytes: reports.fold(0, (a, r) => a + r.wireBytes),
+        // Device test: a cancelled session showed 0.0 MB although ~200 MB had moved (only finished batches were
+        // counted). Count the bytes actually moved, finished batch or not.
+        bytes: max(reports.fold<int>(0, (a, r) => a + r.wireBytes), progress.doneBytes),
         durationMs: reports.fold(0, (a, r) => a + r.elapsed.inMilliseconds),
         categories: cats);
   }
