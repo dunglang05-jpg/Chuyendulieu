@@ -120,6 +120,14 @@ class S {
       'vi': 'Cáp đo được {cable} MB/s, chậm hơn Wi-Fi ({wifi} MB/s), nên tiếp tục dùng Wi-Fi.',
       'en': 'The cable measured {cable} MB/s, slower than Wi-Fi ({wifi} MB/s), so Wi-Fi is kept.'
     },
+    'path_cable_nodata': {
+      'vi': 'Cáp không truyền được dữ liệu (kết nối qua cáp chưa thành công) — tiếp tục dùng Wi-Fi. Rút ra cắm lại cáp để thử lại.',
+      'en': 'The cable carried no data (the cable link did not come up) — staying on Wi-Fi. Replug to try again.'
+    },
+    'reconnecting_auto': {
+      'vi': 'Đang kết nối lại — có thể do đang đổi giữa Wi-Fi và cáp…',
+      'en': 'Reconnecting — possibly switching between Wi-Fi and the cable…'
+    },
     'path_cable_lost': {'vi': 'Đã rút cáp — tiếp tục qua Wi-Fi.', 'en': 'Cable unplugged — continuing over Wi-Fi.'},
     'usb_hint': {
       'vi': 'Chỉ Android ↔ Android. Nối hai máy bằng cáp USB-C có truyền dữ liệu, mở khóa cả hai máy, mở ứng dụng ở cả hai và chọn Chỉ cáp. Vẫn cần quét mã QR để xác thực. Ở chế độ này ứng dụng không dùng Wi-Fi.',

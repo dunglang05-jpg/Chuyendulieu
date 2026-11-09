@@ -288,6 +288,8 @@ class _PathInfo extends StatelessWidget {
         'cable': c.pathCableMbps?.toStringAsFixed(1) ?? '?',
         'wifi': c.pathWifiMbps?.toStringAsFixed(1) ?? '?',
       });
+    } else if (c.pathReason == PathReason.cableNoData) {
+      note = S.t('path_cable_nodata');
     } else if (c.pathReason == PathReason.cableLost) {
       note = S.t('path_cable_lost');
     } else if (c.transport == 'auto' && c.cableArmed && !c.onCable) {
@@ -682,7 +684,7 @@ class _TransferView extends StatelessWidget {
       ],
       if (c.reconnecting && !c.switchingPath) ...[
         const SizedBox(height: 16),
-        ClayNote(text: S.t('reconnecting'), icon: Icons.wifi_off_rounded),
+        ClayNote(text: S.t(c.transport == 'auto' ? 'reconnecting_auto' : 'reconnecting'), icon: Icons.wifi_off_rounded),
       ],
       if (c.deviceWarning != null) ...[
         const SizedBox(height: 16),
@@ -706,6 +708,8 @@ class _TransferView extends StatelessWidget {
         ],
         Expanded(child: ClayButton(onPressed: c.cancel, label: S.t('cancel'), color: Clay.danger)),
       ]),
+      const SizedBox(height: 8),
+      Center(child: exportLogButton(context, c)),
     ]);
   }
 }
@@ -808,3 +812,15 @@ class _ReportView extends StatelessWidget {
     ]);
   }
 }
+
+/// Exports the diagnostic log (no file names, no contacts) to Downloads / Files, from any screen.
+Widget exportLogButton(BuildContext context, MigrationController c) => TextButton.icon(
+      icon: const Icon(Icons.bug_report_outlined, size: 18, color: Clay.sub),
+      label: Text(S.t('export_log'), style: const TextStyle(fontWeight: FontWeight.w600, color: Clay.sub)),
+      onPressed: () async {
+        final where = await c.exportLog();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(S.t('log_saved', {'where': where ?? '—'}))));
+        }
+      },
+    );

@@ -99,6 +99,13 @@ class TransferReport {
   bool more = false;
   Manifest? manifest;
 
+  /// Where the time went (ms), for the diagnostic log only (device test 2026-11-09: 1–2 MB/s on 5 GHz Wi-Fi).
+  /// Sender: read (source file), hash, wait (send window full = network/receiver slower), send (socket writes).
+  /// Receiver: net (waiting for frames), write, hash, sync (checkpoint fsync), open (per-file setup), commit.
+  final Map<String, Stopwatch> timers = {};
+  Stopwatch timer(String name) => timers.putIfAbsent(name, Stopwatch.new);
+  Map<String, int> get timingsMs => {for (final e in timers.entries) e.key: e.value.elapsedMilliseconds};
+
   double get mbPerSecond =>
       elapsed.inMicroseconds == 0 ? 0 : wireBytes / 1e6 / (elapsed.inMicroseconds / 1e6);
 }
@@ -238,11 +245,19 @@ Future<TransferReport> runSender(
       while (pos < e.size) {
         await pause?.wait();
         final want = (e.size - pos) < chunkSize ? e.size - pos : chunkSize;
+        final tw = report.timer('wait')..start();
         await waitUntil(() => inflight() + want <= sendWindow);
+        tw.stop();
+        final tr = report.timer('read')..start();
         final Uint8List buf = await raf.read(want);
+        tr.stop();
         if (buf.isEmpty) break; // truncated under us -> FILE_CHANGED below
+        final th = report.timer('hash')..start();
         hasher.add(buf);
+        th.stop();
+        final ts = report.timer('send')..start();
         await ch.writer.data(i, pos, buf);
+        ts.stop();
         pos += buf.length;
         sent[i] = pos;
         wire += buf.length;
@@ -352,7 +367,9 @@ Future<TransferReport> runReceiver(
   Future<OpenPart> ensureOpen(int i) async {
     if (cur?.index == i) return cur!;
     await cur?.raf.close();
+    final tw = report.timer('open')..start();
     cur = await store.openPart(i, expected[i]!);
+    tw.stop();
     sinceAck = 0;
     return cur!;
   }
@@ -365,7 +382,9 @@ Future<TransferReport> runReceiver(
       }
       final Frame f;
       try {
+        final tn = report.timer('net')..start();
         f = await ch.reader.read(maxDataFrame).timeout(idleTimeout);
+        tn.stop();
       } on TimeoutException {
         throw PtpException(PtpErrorCode.peerTimeout, 'sender idle');
       }
@@ -381,13 +400,19 @@ Future<TransferReport> runReceiver(
             throw PtpException(PtpErrorCode.manifestInvalid, 'data beyond declared size');
           }
           final part = await ensureOpen(index);
+          final tw = report.timer('write')..start();
           await store.write(part, payload);
+          tw.stop();
+          final th = report.timer('hash')..start();
           part.hasher.add(payload);
+          th.stop();
           expected[index] = expected[index]! + payload.length;
           report.wireBytes += payload.length;
           sinceAck += payload.length;
           if (sinceAck >= ackInterval) {
+            final ts = report.timer('sync')..start();
             await store.checkpoint(part, expected[index]!);
+            ts.stop();
             await ch.writer.control({'t': 'ack', 'i': index, 'offset': expected[index]});
             sinceAck = 0;
           }
@@ -406,7 +431,12 @@ Future<TransferReport> runReceiver(
               String? dest;
               if (sizeOk && digest is String && constantTimeEquals(part.hasher.hexDigest().codeUnits, digest.toLowerCase().codeUnits)) {
                 try {
-                  dest = await store.commit(part, expectedSha256: digest);
+                  final tc = report.timer('commit')..start();
+                  try {
+                    dest = await store.commit(part, expectedSha256: digest);
+                  } finally {
+                    tc.stop();
+                  }
                 } on PtpException catch (e) {
                   if (e.code != PtpErrorCode.hashMismatch) rethrow; // P2-18: what reached the disk is not what was sent
                 }

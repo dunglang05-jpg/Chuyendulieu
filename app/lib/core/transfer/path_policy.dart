@@ -41,14 +41,22 @@ enum LinkPath { wifi, usb }
 enum PathAction { none, toCable, toWifi }
 
 /// Why the last switch happened — shown to the user and logged (no personal data).
-enum PathReason { none, cableConnected, cableSlower, cableLost, cableFaster, wifiUnmeasured }
+enum PathReason { none, cableConnected, cableSlower, cableLost, cableFaster, wifiUnmeasured, cableNoData }
 
 class PathPolicy {
   PathPolicy({
     this.settle = const Duration(seconds: 3),
     this.trial = const Duration(seconds: 8),
     this.slowerRatio = 0.85,
+    this.noDataGrace = const Duration(seconds: 10),
   });
+
+  /// Extra time after settle + trial before a cable that moved no data at all is given up (device test 2026-11-09:
+  /// the session moved to the cable, nothing flowed, and the old policy reported "0.0 MB/s, slower than Wi-Fi").
+  final Duration noDataGrace;
+
+  /// Below this the cable is treated as not carrying data rather than as "slower".
+  static const double noDataMbps = 0.05;
 
   /// Ignore the first seconds after a switch (TLS handshake, resume, TCP ramp-up).
   final Duration settle;
@@ -97,6 +105,13 @@ class PathPolicy {
     if (path == LinkPath.usb && !cableUp) {
       return _switch(LinkPath.wifi, now, PathReason.cableLost);
     }
+    // On the cable, still no measurement long after the trial window (e.g. the reconnect through the cable never
+    // completed): give the cable up even when nothing is "transferring", otherwise the session waits forever.
+    if (path == LinkPath.usb && cableMbps == null && _switchedAt != null &&
+        now.difference(_switchedAt!) >= settle + trial + noDataGrace && meter.rate(now) == null) {
+      cableRejected = true;
+      return _switch(LinkPath.wifi, now, PathReason.cableNoData);
+    }
     if (!transferring) return PathAction.none;
     if (path == LinkPath.wifi) {
       if (!cableUp || cableRejected) return PathAction.none;
@@ -109,6 +124,10 @@ class PathPolicy {
     final measured = meter.rate(now);
     if (measured == null) return PathAction.none; // stalled (paused peer, big fsync): wait for real data
     cableMbps = measured;
+    if (measured < noDataMbps) {
+      cableRejected = true;
+      return _switch(LinkPath.wifi, now, PathReason.cableNoData);
+    }
     final w = wifiMbps;
     if (w != null && measured < w * slowerRatio) {
       cableRejected = true;

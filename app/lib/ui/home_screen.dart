@@ -106,6 +106,8 @@ class HomeScreen extends StatelessWidget {
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Clay.sub)),
               ),
             ]),
+            const SizedBox(height: 4),
+            Center(child: exportLogButton(context, controller)),
           ],
         ),
         ),
