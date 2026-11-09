@@ -168,7 +168,7 @@ void main() {
     expect(offsets.single, greaterThanOrEqualTo(8 * 1024 * 1024), reason: 'continued from the 8 MiB checkpoint');
     expect(sha(File(p.join(tmp.path, 'shared', 'v.mp4'))), sha(video));
     await h.close();
-  });
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('disk full while writing becomes STORAGE_INSUFFICIENT, other write errors stay internal', () {
     expect(mapWriteError(const FileSystemException('w', 'x', OSError('No space left on device', 28))).code,

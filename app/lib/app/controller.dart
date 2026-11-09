@@ -9,7 +9,6 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -101,6 +100,10 @@ class MigrationController extends ChangeNotifier {
   // ------------------------------------------------------------------ continuation after restart (audit P1-10)
   ContinuationRepo? _contRepo;
   ContinuationRecord? _contRecord;
+
+  /// Audit P2-18 "kiểm tra tăng cường": re-read every received file and compare its SHA-256 again before it is
+  /// published. Off by default until its cost is measured on phones (docs/REMAINING_HARDENING_REPORT.md).
+  bool strictVerify = false;
 
   /// This session continues an earlier transfer that BOTH phones verified (continuation.dart).
   bool continuedTransfer = false;
@@ -650,6 +653,8 @@ class MigrationController extends ChangeNotifier {
       // the inbox. iOS keeps the inbox: Photos import moves the file (shouldMoveFile), so nothing is copied.
       'mediaCategories': android ? const ['photos', 'videos', 'audio', 'documents'] : const <String>[],
       'importCopies': android,
+      // Audit P2-18: size check always; full read-back + SHA-256 only when [strictVerify] (one extra read per file).
+      'verify': strictVerify ? 'full' : 'size',
     });
   }
 

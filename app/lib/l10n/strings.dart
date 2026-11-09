@@ -13,6 +13,7 @@ class S {
   static const Map<String, Map<String, String>> _s = {
     'app_title': {'vi': 'Chuyển dữ liệu', 'en': 'Chuyển dữ liệu'},
     'send': {'vi': 'Gửi dữ liệu', 'en': 'Send data'},
+    'history_empty': {'vi': 'Chưa có lần chuyển nào', 'en': 'No transfers yet'},
     'cont_banner_title': {'vi': 'Có lần chuyển chưa xong', 'en': 'An unfinished transfer'},
     'cont_banner_body': {
       'vi': '{role} với {name}, bắt đầu lúc {time}. Mở lại {action}, ghép đôi với đúng máy đó và xác nhận mã 6 số: hai máy sẽ tự kiểm tra và chuyển tiếp phần còn lại. Giữ được 24 giờ.',

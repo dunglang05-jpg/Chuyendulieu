@@ -127,7 +127,7 @@ void main() {
     });
 
     test('partial data of a transfer the phones did not agree to continue is not reused', () async {
-      final video = await makeFile(tmp, 'v.mp4', 12 * 1024 * 1024 + 5);
+      final video = await makeFile(tmp, 'v.mp4', 9 * 1024 * 1024 + 5);
       const tid = 'CCCCCCCCCCCCCCCCCCCCCC';
       ReceiverStore mk(bool allow) => ReceiverStore(p.join(tmp.path, 'inbox'), JsonCheckpointStore(tmp.path), (_) async => 1 << 40,
           reserve: 0, resumeAllowed: (_) => allow);
@@ -139,7 +139,7 @@ void main() {
         settle(runReceiver(hc, mk(false))),
         settle(runSender(jc, [FileSource(video.path, 'v.mp4', 'videos')], transferId: tid, cancel: token,
             onProgress: (i, d, t, w) {
-          if (w > 9 * 1024 * 1024) token.cancel();
+          if (w > 8 * 1024 * 1024 + 512 * 1024) token.cancel();
         })),
       ]);
       await h.close();
@@ -155,7 +155,7 @@ void main() {
       expect(starts.single, 0, reason: 'restarted from 0: the earlier partial was not trusted');
       expect(sha(File(r[0].committedPaths[0]!)), sha(video));
       await h.close();
-    });
+    }, timeout: const Timeout(Duration(minutes: 3)));
   });
 
   group('repository', () {

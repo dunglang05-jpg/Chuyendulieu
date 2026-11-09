@@ -403,8 +403,15 @@ Future<TransferReport> runReceiver(
               final digest = msg['sha256'];
               final sizeOk = expected[i] == manifest.files[i].size && msg['size'] == manifest.files[i].size;
               String status;
+              String? dest;
               if (sizeOk && digest is String && constantTimeEquals(part.hasher.hexDigest().codeUnits, digest.toLowerCase().codeUnits)) {
-                final dest = await store.commit(part);
+                try {
+                  dest = await store.commit(part, expectedSha256: digest);
+                } on PtpException catch (e) {
+                  if (e.code != PtpErrorCode.hashMismatch) rethrow; // P2-18: what reached the disk is not what was sent
+                }
+              }
+              if (dest != null) {
                 report.committedPaths[i] = dest;
                 if (!report.ok.contains(i)) report.ok.add(i);
                 report.failed.remove(i);

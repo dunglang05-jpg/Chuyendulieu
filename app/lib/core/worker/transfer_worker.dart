@@ -314,6 +314,7 @@ class _Worker {
         reserve: a['reserve'] as int? ?? storageReserve,
         media: mediaCats.isEmpty ? null : _RpcMediaSink(_rpc, mediaCats),
         importCopies: a['importCopies'] == true,
+        verify: a['verify'] == 'full' ? VerifyMode.full : VerifyMode.size,
         onEvent: _log,
         // Partial data from an earlier session is reused only for transfers both phones agreed to continue.
         resumeAllowed: (tid) => cont != null && cont.continued && cont.record.transferIds.contains(tid));

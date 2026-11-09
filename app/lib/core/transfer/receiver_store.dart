@@ -92,6 +92,29 @@ abstract class MediaSink {
   Future<void> delete(String uri);
 }
 
+/// Audit P2-18: what is checked after a file is written, before it is published / moved into place.
+/// size: the file on disk has exactly the declared size (one stat, no extra I/O) — always on.
+/// full: additionally re-reads the whole file and compares its SHA-256 with the sender's digest (one extra full
+///       read + hash). Note: right after fsync the re-read is usually served from the OS page cache, so this catches
+///       write-path bugs (wrong offset, truncation, a broken fd path) rather than flash-media corruption.
+enum VerifyMode { size, full }
+
+/// SHA-256 of a file read in 1 MiB blocks (no copy is made).
+Future<String> sha256OfFile(String path) async {
+  final h = StreamingSha256();
+  final raf = await File(path).open();
+  try {
+    while (true) {
+      final b = await raf.read(1 << 20);
+      if (b.isEmpty) break;
+      h.add(b);
+    }
+  } finally {
+    await raf.close();
+  }
+  return h.hexDigest();
+}
+
 /// ENOSPC / EDQUOT while writing → STORAGE_INSUFFICIENT (resumable after the user frees space), not INTERNAL_ERROR.
 PtpException mapWriteError(FileSystemException e) {
   final code = e.osError?.errorCode;
@@ -111,7 +134,12 @@ class OpenPart {
 
 class ReceiverStore {
   ReceiverStore(this.root, this.checkpoints, this.freeSpace,
-      {this.reserve = 256 * 1024 * 1024, this.media, this.importCopies = false, this.onEvent, this.resumeAllowed});
+      {this.reserve = 256 * 1024 * 1024,
+      this.media,
+      this.importCopies = false,
+      this.onEvent,
+      this.resumeAllowed,
+      this.verify = VerifyMode.size});
 
   final String root; // app-private inbox; files the media sink cannot take are imported from here after commit
   final CheckpointStore checkpoints;
@@ -124,6 +152,12 @@ class ReceiverStore {
   /// True when importing an inbox file COPIES it (Android MediaStore insert from the inbox); false when it is moved
   /// (iOS Photos shouldMoveFile, Files) or not imported at all. Used for the capacity check.
   final bool importCopies;
+
+  final VerifyMode verify;
+
+  /// Extra work done by [VerifyMode.full] in this store's lifetime (reported in the diagnostic log).
+  int verifiedBytes = 0;
+  Duration verifyTime = Duration.zero;
 
   /// Audit P1-10: may partial data of this transfer id from an EARLIER session be reused? Null = always (tests,
   /// legacy). Ids already seen by this store (reconnects within the session) are always allowed.
@@ -312,7 +346,7 @@ class ReceiverStore {
 
   /// fsync, then either publish the pending media item in place (no copy) or atomically rename the inbox partial
   /// into `<root>/<category>/<path>` (unique name, never overwrite).
-  Future<String> commit(OpenPart part) async {
+  Future<String> commit(OpenPart part, {String? expectedSha256}) async {
     final e = manifest.files[part.index];
     try {
       await part.raf.flush();
@@ -320,6 +354,22 @@ class ReceiverStore {
       throw mapWriteError(err);
     }
     await part.raf.close();
+    // Audit P2-18: check what is on disk before it becomes visible.
+    final path = partPath(part.index);
+    final len = await File(path).length();
+    if (len != e.size) {
+      throw PtpException(PtpErrorCode.hashMismatch, 'size on disk $len != ${e.size}');
+    }
+    if (verify == VerifyMode.full && expectedSha256 != null) {
+      final sw = Stopwatch()..start();
+      final got = await sha256OfFile(path);
+      verifyTime += sw.elapsed;
+      verifiedBytes += len;
+      onEvent?.call('verify_readback', {'bytes': len, 'ms': sw.elapsedMilliseconds});
+      if (!constantTimeEquals(got.codeUnits, expectedSha256.toLowerCase().codeUnits)) {
+        throw PtpException(PtpErrorCode.hashMismatch, 'read-back digest differs');
+      }
+    }
     if (_onMedia(part.index)) {
       final location = await media!.publish(_files['${part.index}']['uri'] as String);
       final dest = '$publishedPrefix$location';
@@ -343,7 +393,9 @@ class ReceiverStore {
   }
 
   Future<void> discard(int i, [OpenPart? part]) async {
-    await part?.raf.close();
+    try {
+      await part?.raf.close();
+    } catch (_) {} // already closed by a failed commit
     if (_onMedia(i)) {
       final uri = _files['$i']['uri'] as String;
       _files['$i']
