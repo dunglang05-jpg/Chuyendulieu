@@ -2,6 +2,7 @@
 // Uses only public APIs: Photos, Contacts, UIDocumentPicker, FileManager. Never touches other apps' data.
 import Contacts
 import Flutter
+import NetworkExtension
 import Photos
 import Security
 import UIKit
@@ -14,6 +15,7 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
   private let files = FilesAdapter()
   private var picker: DocumentPickerCoordinator?
   private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+  private var joinedSsid: String?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "com.phonetransferpro/ptp_platform", binaryMessenger: registrar.messenger())
@@ -103,6 +105,39 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
       result("not_applicable")
     case "openBatterySettings":
       result(nil)
+    // "Điểm phát": an iPhone cannot create a hotspot from an app; it can only JOIN the Android host's hotspot.
+    // Needs the "Hotspot Configuration" capability in the Runner entitlements (docs/HOTSPOT.md). Without it the Dart
+    // side shows the network name/password for a manual join. NOT TESTED ON DEVICES.
+    case "hotspotStart":
+      result(FlutterError(code: "HOTSPOT_UNSUPPORTED", message: "iOS apps cannot create a hotspot", details: nil))
+    case "hotspotStop", "hotspotLeave":
+      if let ssid = joinedSsid {
+        NEHotspotConfigurationManager.shared.removeConfiguration(forSSID: ssid)
+        joinedSsid = nil
+      }
+      result(nil)
+    case "hotspotJoin":
+      guard let ssid = args["ssid"] as? String, let psk = args["psk"] as? String else {
+        result(FlutterError(code: "HOTSPOT_JOIN_FAILED", message: "bad arguments", details: nil))
+        return
+      }
+      let cfg = NEHotspotConfiguration(ssid: ssid, passphrase: psk, isWEP: false)
+      cfg.joinOnce = true
+      NEHotspotConfigurationManager.shared.apply(cfg) { error in
+        DispatchQueue.main.async {
+          if let e = error as NSError?, !(e.domain == NEHotspotConfigurationErrorDomain
+                                          && e.code == NEHotspotConfigurationError.alreadyAssociated.rawValue) {
+            let code = (e.domain == NEHotspotConfigurationErrorDomain
+                        && e.code == NEHotspotConfigurationError.userDenied.rawValue) ? "HOTSPOT_JOIN_DENIED" : "HOTSPOT_JOIN_FAILED"
+            result(FlutterError(code: code, message: code, details: nil))
+          } else {
+            self.joinedSsid = ssid
+            result("") // gateway unknown on iOS: the QR lists the host's hotspot address first
+          }
+        }
+      }
+    case "wifiLinkMbps":
+      result(-1) // not exposed to iOS apps
     case "openAppSettings":
       if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
       result(nil)

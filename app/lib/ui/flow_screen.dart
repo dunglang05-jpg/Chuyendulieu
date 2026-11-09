@@ -108,6 +108,7 @@ class _FlowScreenState extends State<FlowScreen> {
       case MigrationState.discovering:
       case MigrationState.pairing:
         if (c.qrUri != null) return _QrView(c: c, role: widget.role);
+        if (c.hotspotManual != null) return _HotspotManualView(c: c);
         return Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const CircularProgressIndicator(),
@@ -167,6 +168,7 @@ class _ConnectChoice extends StatelessWidget {
             ('wifi', Icons.wifi_rounded, S.t('transport_wifi')),
             ('auto', Icons.swap_horiz_rounded, S.t('transport_auto')),
             ('usb', Icons.usb_rounded, S.t('transport_usb')),
+            ('hotspot', Icons.wifi_tethering_rounded, S.t('transport_hotspot')),
           ],
           value: mode,
           onChanged: onTransport,
@@ -177,12 +179,23 @@ class _ConnectChoice extends StatelessWidget {
         radius: 26,
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ClayBlob(
-              icon: switch (mode) { 'usb' => Icons.usb_rounded, 'auto' => Icons.swap_horiz_rounded, _ => Icons.wifi_rounded },
+              icon: switch (mode) {
+                'usb' => Icons.usb_rounded,
+                'auto' => Icons.swap_horiz_rounded,
+                'hotspot' => Icons.wifi_tethering_rounded,
+                _ => Icons.wifi_rounded
+              },
               size: 44,
               pressed: true),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(switch (mode) { 'usb' => S.t('usb_hint'), 'auto' => S.t('auto_hint'), _ => S.t('same_wifi') },
+            child: Text(
+                switch (mode) {
+                  'usb' => S.t('usb_hint'),
+                  'auto' => S.t('auto_hint'),
+                  'hotspot' => S.t('hotspot_hint'),
+                  _ => S.t('same_wifi')
+                },
                 style: const TextStyle(fontSize: 14, height: 1.45, fontWeight: FontWeight.w600, color: Clay.sub)),
           ),
         ]),
@@ -263,6 +276,10 @@ class _QrViewState extends State<_QrView> {
         ]),
       ),
       if (widget.c.transport == 'usb') ...[const SizedBox(height: 16), _UsbStatus(c: widget.c)],
+      if (widget.c.transport == 'hotspot') ...[
+        const SizedBox(height: 16),
+        ClayNote(text: S.t('hotspot_qr_note'), icon: Icons.wifi_tethering_rounded),
+      ],
       if (loopbackOnly && widget.c.transport != 'usb') ...[
         const SizedBox(height: 16),
         ClayNote(text: S.t('no_wifi_ip'), icon: Icons.wifi_off_rounded),
@@ -333,6 +350,10 @@ class _UsbStatus extends StatelessWidget {
 }
 
 String usbReason(String code) {
+  if (code.startsWith('HOTSPOT')) {
+    final t = S.t('hs_err_$code');
+    return t == 'hs_err_$code' ? S.t('hs_err_generic', {'code': code}) : t;
+  }
   final key = 'usb_err_${code.split(':').first}';
   final t = S.t(key);
   return t == key ? S.t('usb_err_generic', {'code': code}) : t;
@@ -713,6 +734,10 @@ class _TransferView extends StatelessWidget {
           child: TextButton(onPressed: c.openBatterySettings, child: Text(S.t('bg_open_settings'))),
         ),
       ],
+      if (c.slowWifiMbps != null) ...[
+        const SizedBox(height: 16),
+        ClayNote(text: S.t('slow_wifi', {'mbps': c.slowWifiMbps}), icon: Icons.network_check_rounded),
+      ],
       if (c.deviceWarning != null) ...[
         const SizedBox(height: 16),
         ClayNote(text: S.t(c.deviceWarning!), icon: Icons.warning_amber_rounded),
@@ -851,3 +876,39 @@ Widget exportLogButton(BuildContext context, MigrationController c) => TextButto
         }
       },
     );
+
+/// iPhone fallback for "Điểm phát": shows the host's hotspot name/password so the user can join in Settings.
+class _HotspotManualView extends StatelessWidget {
+  const _HotspotManualView({required this.c});
+  final MigrationController c;
+
+  @override
+  Widget build(BuildContext context) {
+    final ap = c.hotspotManual!;
+    Widget row(String label, String value) => Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Row(children: [
+            SizedBox(width: 92, child: Text(label, style: const TextStyle(fontSize: 13, color: Clay.sub))),
+            Expanded(
+                child: SelectableText(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+          ]),
+        );
+    return ListView(children: [
+      ClayStep(S.t('step_connect')),
+      const SizedBox(height: 18),
+      ClaySurface(
+        radius: 26,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(S.t('hotspot_manual_title'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text(S.t('hotspot_manual_body'), style: const TextStyle(fontSize: 14, height: 1.45, color: Clay.sub)),
+          row(S.t('hotspot_network'), ap.ssid),
+          row(S.t('hotspot_password'), ap.psk),
+        ]),
+      ),
+      const SizedBox(height: 28),
+      ClayPrimaryButton(
+          onPressed: c.continueManualJoin, icon: Icons.arrow_forward_rounded, label: S.t('hotspot_continue')),
+    ]);
+  }
+}

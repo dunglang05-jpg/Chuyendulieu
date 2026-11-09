@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
   s.platform         = :ios, '14.0'
-  s.frameworks       = 'Photos', 'Contacts', 'UniformTypeIdentifiers'
+  s.frameworks       = 'Photos', 'Contacts', 'UniformTypeIdentifiers', 'NetworkExtension'
   s.swift_version    = '5.0'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

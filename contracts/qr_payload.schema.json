@@ -57,6 +57,17 @@
         "type": "string",
         "maxLength": 32
       }
+    },
+    "ap": {
+      "description": "Optional: host's app-only hotspot (Android LocalOnlyHotspot) for direct phone-to-phone Wi-Fi. Ephemeral, system-generated; shown on screen only, never logged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["s", "k", "sec"],
+      "properties": {
+        "s": {"type": "string", "minLength": 1, "maxLength": 32},
+        "k": {"type": "string", "minLength": 8, "maxLength": 63, "pattern": "^[\\x20-\\x7e]+$"},
+        "sec": {"enum": ["wpa2", "wpa3"]}
+      }
     }
   }
 }

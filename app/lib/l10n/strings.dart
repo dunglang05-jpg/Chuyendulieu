@@ -176,6 +176,57 @@ class S {
     'usb_err_PROTOCOL_VERSION_MISMATCH': {'vi': 'Hai máy dùng phiên bản ứng dụng khác nhau.', 'en': 'The two phones run different app versions.'},
     'usb_err_LINK_LOST': {'vi': 'Mất kết nối cáp. Cắm lại để tiếp tục.', 'en': 'Cable link lost. Replug to continue.'},
     'usb_err_generic': {'vi': 'Lỗi cáp USB ({code}).', 'en': 'USB cable error ({code}).'},
+    'transport_hotspot': {'vi': 'Điểm phát', 'en': 'Direct'},
+    'hotspot_hint': {
+      'vi': 'Không cần router: máy hiện mã sẽ tự phát một Wi-Fi riêng, máy quét mã tự vào mạng đó. '
+          'Máy hiện mã phải là Android. Thử nghiệm — chưa kiểm tra trên máy thật.',
+      'en': 'No router needed: the phone showing the code creates its own Wi-Fi and the scanning phone joins it. '
+          'The phone showing the code must be Android. Experimental — not yet tested on real phones.'
+    },
+    'hotspot_qr_note': {
+      'vi': 'Đang phát Wi-Fi riêng cho lần chuyển này. Máy kia sẽ hỏi “kết nối với thiết bị này?” — hãy đồng ý.',
+      'en': 'Sharing a private Wi-Fi for this transfer. The other phone will ask to connect — accept it.'
+    },
+    'hotspot_manual_title': {'vi': 'Vào Wi-Fi của máy kia', 'en': 'Join the other phone’s Wi-Fi'},
+    'hotspot_manual_body': {
+      'vi': 'iPhone chưa tự vào được. Mở Cài đặt › Wi-Fi, chọn mạng dưới đây, nhập mật khẩu, rồi quay lại bấm Tiếp tục.',
+      'en': 'The iPhone could not join by itself. Open Settings › Wi-Fi, pick the network below, enter the password, '
+          'then come back and tap Continue.'
+    },
+    'hotspot_network': {'vi': 'Tên mạng', 'en': 'Network'},
+    'hotspot_password': {'vi': 'Mật khẩu', 'en': 'Password'},
+    'hotspot_continue': {'vi': 'Đã vào mạng, tiếp tục', 'en': 'Joined, continue'},
+    'slow_wifi': {
+      'vi': 'Wi-Fi của máy này đang kết nối chậm ({mbps} Mbps) nên tốc độ chuyển bị giới hạn. '
+          'Hãy lại gần router, tắt/bật Wi-Fi, hoặc dùng chế độ “Điểm phát”.',
+      'en': 'This phone’s Wi-Fi link is slow ({mbps} Mbps), which limits the transfer. '
+          'Move closer to the router, toggle Wi-Fi, or use “Direct” mode.'
+    },
+    'hs_err_HOTSPOT_PERMISSION': {
+      'vi': 'Cần quyền “Thiết bị lân cận” (hoặc Vị trí trên Android 12 trở xuống) để tạo/vào Wi-Fi trực tiếp.',
+      'en': 'The Nearby devices permission (Location on Android 12 and older) is needed for direct Wi-Fi.'
+    },
+    'hs_err_HOTSPOT_INCOMPATIBLE_MODE': {
+      'vi': 'Điểm phát sóng của máy đang bật. Hãy tắt điểm phát sóng trong Cài đặt rồi thử lại.',
+      'en': 'The phone’s own hotspot is on. Turn it off in Settings and try again.'
+    },
+    'hs_err_HOTSPOT_DISALLOWED': {
+      'vi': 'Máy này không cho phép ứng dụng tạo điểm phát (chính sách thiết bị). Hãy dùng Wi-Fi thường.',
+      'en': 'This phone does not allow apps to create a hotspot (device policy). Use normal Wi-Fi.'
+    },
+    'hs_err_HOTSPOT_JOIN_FAILED': {
+      'vi': 'Không vào được Wi-Fi của máy kia. Hãy để hai máy gần nhau, bấm “Kết nối” khi được hỏi, rồi thử lại.',
+      'en': 'Could not join the other phone’s Wi-Fi. Keep the phones close, tap Connect when asked, and retry.'
+    },
+    'hs_err_HOTSPOT_JOIN_DENIED': {
+      'vi': 'Bạn đã từ chối kết nối Wi-Fi của máy kia.',
+      'en': 'You declined to join the other phone’s Wi-Fi.'
+    },
+    'hs_err_HOTSPOT_UNSUPPORTED': {
+      'vi': 'Máy này không tạo được điểm phát từ ứng dụng. Hãy để máy Android hiện mã QR.',
+      'en': 'This phone cannot create a hotspot from an app. Let the Android phone show the QR code.'
+    },
+    'hs_err_generic': {'vi': 'Lỗi Wi-Fi trực tiếp ({code}).', 'en': 'Direct Wi-Fi error ({code}).'},
     'export_log': {'vi': 'Xuất log chẩn đoán (không chứa dữ liệu cá nhân)', 'en': 'Export diagnostic log (no personal data)'},
     'log_saved': {'vi': 'Đã lưu log vào: {where}', 'en': 'Log saved to: {where}'},
     'import_denied': {

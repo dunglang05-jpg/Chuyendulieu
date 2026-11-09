@@ -41,6 +41,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     private lateinit var contacts: ContactsAdapter
     private lateinit var usbTransport: UsbTransport
     private lateinit var vault: SecureVault
+    private lateinit var hotspot: Hotspot
 
     private var pendingPermission: Pair<Int, MethodChannel.Result>? = null
     private var pendingPermissionCategory: String? = null
@@ -53,6 +54,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         vault = SecureVault(context)
         contacts = ContactsAdapter(context)
         usbTransport = UsbTransport(context)
+        hotspot = Hotspot(context)
         channel = MethodChannel(b.binaryMessenger, "com.phonetransferpro/ptp_platform")
         channel.setMethodCallHandler(this)
     }
@@ -61,6 +63,8 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         channel.setMethodCallHandler(null)
         media.closeAll()
         usbTransport.stop()
+        hotspot.stop()
+        hotspot.leave()
         scope.cancel()
     }
 
@@ -187,6 +191,25 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 }
                 result.success(null)
             }
+            // Direct phone-to-phone Wi-Fi ("Điểm phát"). NOT TESTED ON DEVICES. Name/password are never logged.
+            "hotspotStart" -> hotspot.start { info, err ->
+                if (err != null) result.error(err, err, null) else result.success(info)
+            }
+            "hotspotStop" -> {
+                hotspot.stop()
+                result.success(null)
+            }
+            "hotspotJoin" -> hotspot.join(
+                call.argument<String>("ssid")!!,
+                call.argument<String>("psk")!!,
+                call.argument<String>("sec") ?: "wpa2",
+                (call.argument<Int>("timeoutMs") ?: 60_000).coerceIn(5_000, 180_000),
+            ) { gw, err -> if (err != null) result.error(err, err, null) else result.success(gw) }
+            "hotspotLeave" -> {
+                hotspot.leave()
+                result.success(null)
+            }
+            "wifiLinkMbps" -> result.success(hotspot.linkMbps())
             "openAppSettings" -> {
                 val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -210,11 +233,17 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         else -> if (cat in listOf("photos", "videos", "audio")) listOf(Manifest.permission.READ_EXTERNAL_STORAGE) else emptyList()
     }
 
+    /** Local-only hotspot / Wi-Fi network request: "Nearby devices" on 13+, location before that. */
+    private fun nearbyWifiPermissions(): List<String> =
+        if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.NEARBY_WIFI_DEVICES)
+        else listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+
     private fun permissionState(cat: String): String {
         if (cat == "notifications") {
             return if (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)) "granted" else "denied"
         }
         if (cat == "contacts") return if (granted(Manifest.permission.READ_CONTACTS)) "granted" else "denied"
+        if (cat == "nearbyWifi") return if (nearbyWifiPermissions().all { granted(it) }) "granted" else "denied"
         val perms = mediaPermissions(cat)
         if (perms.isEmpty()) return "not_applicable"
         if (perms.all { granted(it) }) return "granted"
@@ -258,6 +287,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         if (forImport && cat != "contacts") return result.success("granted") // own MediaStore inserts need none
         val perms = when (cat) {
             "notifications" -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
+            "nearbyWifi" -> nearbyWifiPermissions()
             "contacts" -> if (forImport) emptyList() else listOf(Manifest.permission.READ_CONTACTS)
             else -> mediaPermissions(cat).toMutableList().apply {
                 if (Build.VERSION.SDK_INT >= 34 && cat != "audio") add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)

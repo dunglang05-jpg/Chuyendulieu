@@ -61,6 +61,10 @@ Chi tiết từng mục: `docs/REMAINING_HARDENING_REPORT.md`. Mới phát hiệ
 
 Socket TLS, phiên PTP/1, engine gửi/nhận và SHA-256 chạy trong **isolate nền** (`app/lib/core/worker/transfer_worker.dart`). Luồng giao diện chỉ nhận sự kiện (QR, mã xác nhận, tiến trình ≤ 10 lần/giây, báo cáo lô, lỗi). Các lệnh native mà engine cần (đóng file nguồn, hỏi dung lượng trống) được gửi ngược về luồng giao diện qua `rpc`, nên không plugin nào phải chạy trong isolate nền. Checkpoint tiếp tục truyền chuyển từ SQLite sang file JSON ghi nguyên tử (fsync + rename) trong thư mục riêng của app, vì sqflite là plugin; lịch sử vẫn ở SQLite. **Chưa đo trên máy thật** xem giao diện có còn giật hay không.
 
+## "Điểm phát" — Wi-Fi trực tiếp giữa hai máy (2026-11-09, CHƯA KIỂM TRA TRÊN MÁY THẬT)
+
+Lý do: log thật ngày 2026-11-09 cho thấy máy nhận (realme RMX5268) chỉ kết nối router ở 54 Mbps nên lần chuyển bị giới hạn ~3,5 MB/s; app không phải điểm nghẽn. Chế độ mới: máy Android hiện QR tự phát Wi-Fi riêng (LocalOnlyHotspot), máy quét tự vào mạng đó (Android: WifiNetworkSpecifier; iPhone: NEHotspotConfiguration hoặc vào tay). iPhone không thể làm máy phát. Thêm cảnh báo "Wi-Fi chậm" khi liên kết router < 150 Mbps, và log `reconnect_start` nay ghi mã lỗi. Chi tiết, rủi ro và kế hoạch kiểm thử: `docs/HOTSPOT.md`. Chưa có số đo tốc độ.
+
 ## Giới hạn đã biết (thiết kế, không phải lỗi)
 
 * iOS: ứng dụng phải ở foreground khi chuyển; iOS tạm dừng ứng dụng nền.
@@ -71,5 +75,5 @@ Socket TLS, phiên PTP/1, engine gửi/nhận và SHA-256 chạy trong **isolate
 * Lịch, SMS, nhật ký cuộc gọi, dữ liệu riêng của Zalo/Messenger/WhatsApp…, mật khẩu/phiên đăng nhập: **không chuyển**; UI giải thích và chỉ cách chính thức.
 * Dart `SecureSocket` không cho đặt TLS tối thiểu = 1.3. Hai bản app đều dùng BoringSSL nên thực tế bắt tay 1.3; chứng chỉ được ghim qua QR nên kể cả TLS 1.2 cũng không bị MITM. Bản Python thì ép 1.3. Xem `THREAT_MODEL.md`.
 * v1 gửi tuần tự từng file; chạy song song và chunk thích ứng chờ số đo thật trên máy (M6/M7).
-* USB-C/OTG, Wi-Fi Direct, Nearby, QUIC: chưa làm (M6), sẽ không được quảng cáo khi chưa có bằng chứng trên thiết bị.
+* Wi-Fi Direct, Nearby, QUIC: chưa làm. USB-C (thử nghiệm) và "Điểm phát" (thử nghiệm) có mã nhưng chưa được kiểm chứng trên thiết bị, không được quảng cáo là hỗ trợ.
 * Android minSdk 29 (Android 10+).

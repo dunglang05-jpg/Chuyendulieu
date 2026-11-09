@@ -18,6 +18,7 @@ import '../domain/capabilities.dart';
 import '../protocol/constants.dart';
 import '../protocol/errors.dart';
 import '../protocol/codec.dart';
+import '../protocol/qr_payload.dart' show HotspotInfo;
 import '../session/continuation.dart';
 import '../session/identity.dart';
 import '../session/session.dart';
@@ -252,7 +253,9 @@ class _Worker {
         caps: _caps,
         identity: identity,
         loopbackOnly: a['loopbackOnly'] == true,
-        flags: ((a['flags'] as List<Object?>?) ?? const []).cast<String>());
+        flags: ((a['flags'] as List<Object?>?) ?? const []).cast<String>(),
+        ap: a['ap'] == null ? null : HotspotInfo.parse(a['ap']),
+        preferredHosts: ((a['apHosts'] as List<Object?>?) ?? const []).cast<String>());
     await h.start();
     _host = h;
     _contCandidates = _parseCandidates(a['cont']);

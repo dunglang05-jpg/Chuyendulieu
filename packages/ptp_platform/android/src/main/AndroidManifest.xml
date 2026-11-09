@@ -18,6 +18,15 @@
          screen is off during a transfer. The user can refuse; the transfer then relies on the foreground service. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- "Điểm phát": app-only hotspot on the host, direct Wi-Fi join on the other phone. No Internet sharing and no
+         location use (neverForLocation); API 29-32 still require the location permission for these Wi-Fi APIs. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
+
     <!-- Optional: the USB-C cable mode needs host or accessory support, but the app must stay installable
          without it (Wi-Fi is the default transport). -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />

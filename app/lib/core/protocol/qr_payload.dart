@@ -1,4 +1,6 @@
-/// QR/session payload (PROTOCOL_v1 §2). Contains no PII, no credentials, no file names.
+/// QR/session payload (PROTOCOL_v1 §2). Contains no PII, no account credentials, no file names. The optional `ap`
+/// field carries the ephemeral name/password of the host's app-only hotspot ("Điểm phát"); it is shown on screen
+/// for the other phone to scan and must never be logged.
 library;
 
 import 'dart:convert';
@@ -47,6 +49,36 @@ class Endpoint {
 /// QR flag: the host chose "Tự động" (Wi-Fi, may move to a USB-C cable when both phones are Android).
 const usbAutoFlag = 'usbauto';
 
+/// Host's app-only hotspot (Android LocalOnlyHotspot): random name/password created by the system for this session.
+class HotspotInfo {
+  const HotspotInfo(this.ssid, this.psk, this.sec);
+  final String ssid;
+  final String psk;
+  final String sec; // wpa2 | wpa3
+
+  Map<String, Object?> toJson() => {'s': ssid, 'k': psk, 'sec': sec};
+
+  static HotspotInfo parse(Object? o) {
+    if (o is! Map || !{'s', 'k', 'sec'}.containsAll(o.keys)) {
+      throw PtpException(PtpErrorCode.protocolError, 'bad hotspot info');
+    }
+    final s = o['s'];
+    final k = o['k'];
+    final sec = o['sec'];
+    if (s is! String || s.isEmpty || utf8.encode(s).length > 32 || s.contains(RegExp(r'[\x00-\x1f]'))) {
+      throw PtpException(PtpErrorCode.protocolError, 'bad hotspot name');
+    }
+    if (k is! String || k.length < 8 || k.length > 63 || k.codeUnits.any((c) => c < 0x20 || c > 0x7e)) {
+      throw PtpException(PtpErrorCode.protocolError, 'bad hotspot password');
+    }
+    if (sec != 'wpa2' && sec != 'wpa3') throw PtpException(PtpErrorCode.protocolError, 'bad hotspot security');
+    return HotspotInfo(s, k, sec as String);
+  }
+
+  @override
+  String toString() => 'HotspotInfo(<redacted>)'; // never print the password by accident
+}
+
 class QrPayload {
   QrPayload({
     required this.version,
@@ -57,6 +89,7 @@ class QrPayload {
     required this.hostRole,
     required this.platform,
     this.flags = const [],
+    this.ap,
   });
 
   final int version;
@@ -67,8 +100,20 @@ class QrPayload {
   final String hostRole; // sender | receiver
   final String platform;
   final List<String> flags;
+  final HotspotInfo? ap;
 
-  static const _allowed = {'v', 'sid', 'exp', 'ep', 'fp', 'role', 'pf', 'f'};
+  QrPayload withEndpoints(List<String> eps) => QrPayload(
+      version: version,
+      sid: sid,
+      expiresAt: expiresAt,
+      endpoints: eps,
+      fingerprint: fingerprint,
+      hostRole: hostRole,
+      platform: platform,
+      flags: flags,
+      ap: ap);
+
+  static const _allowed = {'v', 'sid', 'exp', 'ep', 'fp', 'role', 'pf', 'f', 'ap'};
   static const _required = {'v', 'sid', 'exp', 'ep', 'fp', 'role', 'pf'};
 
   String toUri() {
@@ -81,6 +126,7 @@ class QrPayload {
       'role': hostRole,
       'pf': platform,
       'f': flags,
+      if (ap != null) 'ap': ap!.toJson(),
     });
     final uri = 'ptp://pair?d=${b64u(utf8.encode(body))}';
     assert(uri.length <= 1024);
@@ -136,6 +182,7 @@ class QrPayload {
       hostRole: role as String,
       platform: pf as String,
       flags: f.cast<String>(),
+      ap: obj.containsKey('ap') ? HotspotInfo.parse(obj['ap']) : null,
     );
   }
 }

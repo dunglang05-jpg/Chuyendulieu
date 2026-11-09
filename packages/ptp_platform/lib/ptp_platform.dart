@@ -141,4 +141,23 @@ class PtpPlatform {
   static Future<String?> vaultGet(String name) async => await _call<String?>('vaultGet', {'name': name});
 
   static Future<void> vaultDelete(String name) => _call<void>('vaultDelete', {'name': name});
+
+  /// "Điểm phát" host (Android only): app-scoped hotspot without Internet sharing.
+  /// Returns {ssid, psk, sec: wpa2|wpa3, band5: bool?, ips: [AP IPv4]}. Throws PlatformException with codes
+  /// HOTSPOT_PERMISSION | HOTSPOT_INCOMPATIBLE_MODE | HOTSPOT_DISALLOWED | HOTSPOT_NO_CHANNEL | HOTSPOT_FAILED |
+  /// HOTSPOT_UNSUPPORTED (iOS). The name/password must never be logged.
+  static Future<Map<String, Object?>> hotspotStart() async => Map<String, Object?>.from(await _call<Map>('hotspotStart'));
+
+  static Future<void> hotspotStop() => _call<void>('hotspotStop');
+
+  /// "Điểm phát" joiner: connects to the host's hotspot (system dialog) and routes this app's sockets over it.
+  /// Returns the host's gateway IPv4 when known, else ''. Codes: HOTSPOT_JOIN_FAILED | HOTSPOT_JOIN_DENIED |
+  /// HOTSPOT_PERMISSION.
+  static Future<String> hotspotJoin(String ssid, String psk, String sec, {int timeoutMs = 60000}) async =>
+      (await _call<String?>('hotspotJoin', {'ssid': ssid, 'psk': psk, 'sec': sec, 'timeoutMs': timeoutMs})) ?? '';
+
+  static Future<void> hotspotLeave() => _call<void>('hotspotLeave');
+
+  /// Link rate of the current router Wi-Fi in Mbps, -1 when unknown (always -1 on iOS).
+  static Future<int> wifiLinkMbps() async => (await _call<int?>('wifiLinkMbps')) ?? -1;
 }
