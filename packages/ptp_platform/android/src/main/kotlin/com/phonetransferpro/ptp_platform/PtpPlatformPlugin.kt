@@ -118,6 +118,13 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 val mime = call.argument<String>("mime")
                 if (cat == "contacts") contacts.importViaSystemApp(activity, File(path)) else media.importFile(File(path), cat, name, mime)
             }
+            // Receive straight into MediaStore (audit P1-7). NOT TESTED ON DEVICES.
+            "mediaCreate" -> io(result) {
+                media.createPending(call.argument<String>("category")!!, call.argument<String>("name")!!, call.argument<String>("mime"))
+            }
+            "mediaReopen" -> io(result) { media.reopenPending(call.argument<String>("uri")!!) }
+            "mediaPublish" -> io(result) { media.publishPending(call.argument<String>("uri")!!) }
+            "mediaDelete" -> io(result) { media.deletePending(call.argument<String>("uri")!!); null }
             "setTransferActive" -> {
                 TransferService.setActive(context, call.argument<Boolean>("active") ?: false)
                 result.success(null)

@@ -7,6 +7,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -24,6 +25,7 @@ import '../core/protocol/qr_payload.dart';
 import '../core/session/session.dart';
 import '../core/transfer/engine.dart';
 import '../core/transfer/path_policy.dart';
+import '../core/transfer/receiver_store.dart';
 import '../core/worker/transfer_worker.dart';
 import '../data/db.dart';
 import 'diag_log.dart';
@@ -183,6 +185,15 @@ class MigrationController extends ChangeNotifier {
         return null;
       case 'freeBytes':
         return PtpPlatform.freeBytes(args['path'] as String);
+      case 'mediaCreate':
+        return PtpPlatform.mediaCreate(args['category'] as String, args['name'] as String, args['mime'] as String?);
+      case 'mediaReopen':
+        return PtpPlatform.mediaReopen(args['uri'] as String);
+      case 'mediaPublish':
+        return PtpPlatform.mediaPublish(args['uri'] as String);
+      case 'mediaDelete':
+        await PtpPlatform.mediaDelete(args['uri'] as String);
+        return null;
     }
     return null;
   }
@@ -507,10 +518,15 @@ class MigrationController extends ChangeNotifier {
 
   void _sendReceiveCommand() {
     final inbox = _inbox!;
+    final android = probe?.platform == 'android';
     _worker?.send('receive', {
       'inbox': inbox,
       'checkpoints': p.join(p.dirname(inbox), 'checkpoints'),
       'reserve': storageReserve,
+      // Audit P1-7: Android writes media/documents straight into MediaStore (one write); contacts still go through
+      // the inbox. iOS keeps the inbox: Photos import moves the file (shouldMoveFile), so nothing is copied.
+      'mediaCategories': android ? const ['photos', 'videos', 'audio', 'documents'] : const <String>[],
+      'importCopies': android,
     });
   }
 
@@ -779,6 +795,12 @@ class MigrationController extends ChangeNotifier {
     final m = rep.manifest!;
     for (final e in rep.committedPaths.entries) {
       final entry = m.files[e.key];
+      if (e.value.startsWith(publishedPrefix)) {
+        // Already written into its final place while receiving (audit P1-7): nothing to copy.
+        imports.add(ImportOutcome(entry.category, entry.path, 'imported', e.value.substring(publishedPrefix.length), null));
+        _log.event('import', {'category': entry.category, 'status': 'imported', 'state': 'direct'});
+        continue;
+      }
       _importQueue = _importQueue.then((_) async {
         try {
           final r = await PtpPlatform.importFile(e.value, entry.category, p.basename(entry.path), entry.mime);
@@ -847,7 +869,16 @@ class MigrationController extends ChangeNotifier {
         final d = Directory(p.join(inbox, '.ptp-partial', tid));
         if (await d.exists()) await d.delete(recursive: true);
         final cp = File(p.join(p.dirname(inbox), 'checkpoints', '$tid.state.json'));
-        if (await cp.exists()) await cp.delete();
+        if (await cp.exists()) {
+          // Hidden MediaStore items of unfinished files (audit P1-7) are removed too.
+          try {
+            final files = (jsonDecode(await cp.readAsString()) as Map)['files'] as Map;
+            for (final r in files.values) {
+              if (r is Map && r['done'] != true && r['uri'] is String) await PtpPlatform.mediaDelete(r['uri'] as String);
+            }
+          } catch (_) {}
+          await cp.delete();
+        }
       } catch (_) {}
     }
     _log.event('partials_deleted', {'count': _seenTransferIds.length});

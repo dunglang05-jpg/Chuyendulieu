@@ -308,7 +308,8 @@ Future<TransferReport> runReceiver(
   final plan = ch.plan;
   final accepted = [for (final e in manifest.files) if (plan.contains(e.category)) e.index];
   final offsets = await store.prepare(manifest, accepted);
-  final needed = offsets.entries.fold<int>(0, (a, e) => a + manifest.files[e.key].size - e.value);
+  // Includes the import copy when files cannot be written straight to their destination (audit P1-7).
+  final needed = store.requiredBytes(offsets);
   try {
     await store.checkCapacity(needed);
   } on PtpException {
@@ -380,7 +381,7 @@ Future<TransferReport> runReceiver(
             throw PtpException(PtpErrorCode.manifestInvalid, 'data beyond declared size');
           }
           final part = await ensureOpen(index);
-          await part.raf.writeFrom(payload);
+          await store.write(part, payload);
           part.hasher.add(payload);
           expected[index] = expected[index]! + payload.length;
           report.wireBytes += payload.length;
@@ -437,6 +438,15 @@ Future<TransferReport> runReceiver(
           }
       }
     }
+  } on PtpException catch (e) {
+    // Disk filled up mid-transfer: tell the sender why (instead of a dropped connection). Data up to the last
+    // checkpoint stays on disk, so the batch can continue after the user frees space.
+    if (e.code == PtpErrorCode.storageInsufficient) {
+      try {
+        await ch.writer.error(e.code, e.message);
+      } catch (_) {}
+    }
+    rethrow;
   } finally {
     await cur?.raf.close();
   }

@@ -109,4 +109,17 @@ class PtpPlatform {
       Map<String, Object?>.from(await _call<Map>('usbStart', {'mode': mode, 'port': port, 'timeoutMs': timeoutMs}));
 
   static Future<void> usbStop() => _call<void>('usbStop');
+
+  /// Android only (audit P1-7): receive straight into a hidden MediaStore item (IS_PENDING=1) so each byte is
+  /// written once. Returns {uri, path}; `path` is /proc/self/fd/N of a read+write descriptor kept open natively.
+  static Future<Map<String, String>> mediaCreate(String category, String name, String? mime) async =>
+      Map<String, String>.from(await _call<Map>('mediaCreate', {'category': category, 'name': name, 'mime': mime}));
+
+  /// Path for an existing pending item (reconnect / restart). Throws if it no longer exists.
+  static Future<String> mediaReopen(String uri) async => await _call<String>('mediaReopen', {'uri': uri});
+
+  /// Clears IS_PENDING (item becomes visible); returns a readable location such as "Pictures/PhoneTransferPro/a.jpg".
+  static Future<String> mediaPublish(String uri) async => await _call<String>('mediaPublish', {'uri': uri});
+
+  static Future<void> mediaDelete(String uri) => _call<void>('mediaDelete', {'uri': uri});
 }
