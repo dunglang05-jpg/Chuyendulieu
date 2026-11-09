@@ -164,7 +164,8 @@ class _QrViewState extends State<_QrView> {
   @override
   Widget build(BuildContext context) {
     final left = widget.c.qrExpires?.difference(DateTime.now()).inSeconds ?? 0;
-    final loopbackOnly = widget.c.host?.endpoints.every((e) => e.startsWith('127.')) ?? false;
+    final eps = widget.c.qrEndpoints;
+    final loopbackOnly = eps.isNotEmpty && eps.every((e) => e.startsWith('127.'));
     return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Text(S.t('qr_hint'), textAlign: TextAlign.center),
       const SizedBox(height: 16),
@@ -246,7 +247,7 @@ class _SelectView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final peerPf = c.channel?.peer.platform ?? '';
+    final peerPf = c.peer?.platform ?? '';
     final myPf = c.probe?.platform ?? (Platform.isIOS ? 'ios' : 'android');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(S.t('choose_data'), style: Theme.of(context).textTheme.titleLarge),

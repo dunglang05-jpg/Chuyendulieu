@@ -32,6 +32,10 @@ Thông lượng loopback đo được dao động 118–170 MiB/s giữa các l�
 * Bản iOS chưa ký nên chưa cài được lên iPhone (cần tài khoản Apple Developer).
 * CI lần 1 tìm ra lỗi thật: `PtpHost.close()` có thể treo — đã sửa.
 
+## Thay đổi kiến trúc 2026-11-09 (audit P0-2)
+
+Socket TLS, phiên PTP/1, engine gửi/nhận và SHA-256 chạy trong **isolate nền** (`app/lib/core/worker/transfer_worker.dart`). Luồng giao diện chỉ nhận sự kiện (QR, mã xác nhận, tiến trình ≤ 10 lần/giây, báo cáo lô, lỗi). Các lệnh native mà engine cần (đóng file nguồn, hỏi dung lượng trống) được gửi ngược về luồng giao diện qua `rpc`, nên không plugin nào phải chạy trong isolate nền. Checkpoint tiếp tục truyền chuyển từ SQLite sang file JSON ghi nguyên tử (fsync + rename) trong thư mục riêng của app, vì sqflite là plugin; lịch sử vẫn ở SQLite. **Chưa đo trên máy thật** xem giao diện có còn giật hay không.
+
 ## Giới hạn đã biết (thiết kế, không phải lỗi)
 
 * iOS: ứng dụng phải ở foreground khi chuyển; iOS tạm dừng ứng dụng nền.

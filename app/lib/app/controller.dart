@@ -1,6 +1,9 @@
 /// MigrationController — orchestrates one session for the UI: pairing, capability plan, selection,
-/// batched transfer, auto-resume, import, report and history. Platform-neutral except for calls into
-/// the ptp_platform adapter (Android Kotlin / iOS Swift).
+/// batched transfer, auto-resume, import, report and history.
+///
+/// Sockets, TLS, the transfer engines and SHA-256 run in a background isolate (core/worker/transfer_worker.dart,
+/// audit P0-2). This class stays on the UI isolate: state machine, user questions, platform permissions,
+/// opening sources, importing into Photos/MediaStore/Contacts/Files, diagnostics and history.
 library;
 
 import 'dart:async';
@@ -18,41 +21,13 @@ import '../core/protocol/constants.dart';
 import '../core/protocol/errors.dart';
 import '../core/protocol/manifest.dart';
 import '../core/protocol/qr_payload.dart';
-import '../core/session/identity.dart';
 import '../core/session/session.dart';
 import '../core/transfer/engine.dart';
-import '../core/transfer/receiver_store.dart';
+import '../core/worker/transfer_worker.dart';
 import '../data/db.dart';
 import 'diag_log.dart';
 
 const appVersion = '0.1.0';
-
-/// A platform item opened for reading (Android fd path / iOS staged export).
-class PlatformSource extends TransferSource {
-  PlatformSource(this.item, this.opened, this.relPath);
-  final SourceItem item;
-  final OpenedItem opened;
-  @override
-  final String relPath;
-  @override
-  String get category => item.category;
-  @override
-  String? get mime => item.mime;
-
-  /// Size from the live file, mtime from the platform (stable across re-exports, so resume works).
-  @override
-  Future<SourceStat> stat() async {
-    final s = await File(opened.path).stat();
-    if (s.type == FileSystemEntityType.notFound) throw PtpException(PtpErrorCode.fileChanged, 'source gone');
-    return SourceStat(s.size, opened.mtimeMs ?? s.modified.millisecondsSinceEpoch);
-  }
-
-  @override
-  Future<RandomAccessFile> open() => File(opened.path).open();
-
-  @override
-  Future<void> release() => PtpPlatform.closeRead(opened.token);
-}
 
 class ImportOutcome {
   ImportOutcome(this.category, this.name, this.status, this.location, this.message);
@@ -81,11 +56,14 @@ class MigrationController extends ChangeNotifier {
   final DiagLog _log = DiagLog.instance;
   String role = 'sender'; // this device's data role
   ProbeResult? probe;
-  PtpHost? host;
-  PtpChannel? channel;
+  TransferWorkerClient? _worker;
+  StreamSubscription<(String, Object?)>? _workerSub;
+  bool _isHost = false;
+  bool _paired = false;
+  DeviceInfo? peer;
   String? qrUri;
   DateTime? qrExpires;
-  String? joinedUri; // kept for reconnect when this device scanned
+  List<String> qrEndpoints = const [];
   PtpException? error;
   bool reconnecting = false;
   String? deviceWarning;
@@ -93,7 +71,6 @@ class MigrationController extends ChangeNotifier {
   // Confirmation step
   String? pendingSas;
   DeviceInfo? pendingPeer;
-  Completer<bool>? _confirm;
 
   // Receiver approval of the incoming manifest
   Manifest? pendingManifest;
@@ -108,18 +85,21 @@ class MigrationController extends ChangeNotifier {
   final progress = Progress();
   final List<TransferReport> reports = [];
   final List<ImportOutcome> imports = [];
-  CancelToken _cancel = CancelToken();
-  final PauseGate pauseGate = PauseGate();
   bool userPaused = false;
+  bool _thermalPaused = false;
   int? _sessionRow;
   Timer? _deviceTimer;
   Future<void> _importQueue = Future.value();
-  ReceiverStore? _store;
+  String? _inbox;
+  final Set<String> _seenTransferIds = {};
 
   // Sender batches survive reconnects so the same transferIds are resumed.
   List<List<SourceItem>> _batches = [];
   final List<String> _batchIds = [];
   int _batchIndex = 0;
+  Completer<TransferReport>? _batchWait;
+  int _progressBase = 0;
+  DateTime _sendStarted = DateTime.now();
 
   MigrationState get state => sm.state;
 
@@ -128,10 +108,11 @@ class MigrationController extends ChangeNotifier {
     probe = await PtpPlatform.probe();
     final pr = probe!;
     try {
-      await _log.open(p.dirname(await PtpPlatform.inboxDir()));
+      _inbox = await PtpPlatform.inboxDir();
+      await _log.open(p.dirname(_inbox!));
     } catch (_) {}
     _log.event('probe', {'platform': pr.platform, 'os': pr.osVersion, 'model': pr.model, 'role': forRole, 'free': pr.freeBytes});
-    return _capsCache = Capabilities(
+    return Capabilities(
       platform: pr.platform,
       role: forRole,
       osVersion: pr.osVersion,
@@ -152,19 +133,8 @@ class MigrationController extends ChangeNotifier {
 
   DeviceInfo get _device => DeviceInfo(probe?.deviceName ?? 'Phone', probe?.platform ?? 'android', probe?.model ?? '');
 
-  Future<bool> _confirmCb(String sas, DeviceInfo peer) {
-    _go(MigrationState.pairing);
-    _go(MigrationState.authenticating);
-    pendingSas = sas;
-    pendingPeer = peer;
-    _confirm = Completer<bool>();
-    notifyListeners();
-    return _confirm!.future;
-  }
-
   void answerConfirm(bool ok) {
-    _confirm?.complete(ok);
-    _confirm = null;
+    _worker?.send('confirm', ok);
     pendingSas = null;
     notifyListeners();
   }
@@ -172,6 +142,103 @@ class MigrationController extends ChangeNotifier {
   void _go(MigrationState s) {
     if (sm.state != s && sm.canGo(s)) sm.go(s);
     notifyListeners();
+  }
+
+  // ------------------------------------------------------------------ worker plumbing
+  Future<Object?> _rpc(String op, Map<String, Object?> args) async {
+    switch (op) {
+      case 'closeRead':
+        await PtpPlatform.closeRead(args['token'] as String);
+        return null;
+      case 'freeBytes':
+        return PtpPlatform.freeBytes(args['path'] as String);
+    }
+    return null;
+  }
+
+  Future<void> _startWorker() async {
+    final w = await TransferWorkerClient.spawn(_rpc);
+    _worker = w;
+    _workerSub = w.events.listen(_onWorkerEvent);
+  }
+
+  void _onWorkerEvent((String, Object?) ev) {
+    final (type, data) = ev;
+    switch (type) {
+      case 'qr':
+        final m = data as Map<String, Object?>;
+        qrUri = m['uri'] as String;
+        qrExpires = m['expiresAt'] as DateTime;
+        qrEndpoints = (m['endpoints'] as List<Object?>).cast<String>();
+        _log.event('qr_shown', {'endpoints': qrEndpoints.length, 'role': role});
+        notifyListeners();
+      case 'confirm':
+        final m = data as Map<String, Object?>;
+        _go(MigrationState.pairing);
+        _go(MigrationState.authenticating);
+        pendingSas = m['sas'] as String;
+        pendingPeer = m['peer'] as DeviceInfo;
+        notifyListeners();
+      case 'paired':
+        final m = data as Map<String, Object?>;
+        peer = m['peer'] as DeviceInfo;
+        plan = (m['plan'] as List<Object?>).cast<String>().toSet();
+        if (m['resumed'] == true) {
+          unawaited(_onResumed());
+        } else {
+          unawaited(_onPaired());
+        }
+      case 'progress':
+        final m = data as Map<String, Object?>;
+        final wire = m['wire'] as int;
+        progress
+          ..current = m['name'] as String
+          ..doneBytes = _progressBase + wire;
+        if (role == 'sender') {
+          final secs = DateTime.now().difference(_sendStarted).inMilliseconds / 1000;
+          progress.mbps = secs > 0 ? (progress.doneBytes - _sendStartBytes) / 1e6 / secs : 0;
+        }
+        notifyListeners();
+      case 'approve':
+        final m = data as Map<String, Object?>;
+        unawaited(_approveCb(m['manifest'] as Manifest, m['needed'] as int)
+            .then((ok) => _worker?.send('approve', ok)));
+      case 'batch':
+        final rep = data as TransferReport;
+        if (role == 'sender') {
+          _batchWait?.complete(rep);
+        } else {
+          _onReceivedBatch(rep);
+        }
+      case 'receiveDone':
+        unawaited(_onReceiveDone());
+      case 'error':
+        _onWorkerError(data as PtpException);
+      case 'log':
+        final l = data as List<Object?>;
+        _log.event(l[0] as String, (l[1] as Map<Object?, Object?>).cast<String, Object?>());
+    }
+  }
+
+  int _sendStartBytes = 0;
+
+  void _onWorkerError(PtpException e) {
+    final wait = _batchWait;
+    if (wait != null && !wait.isCompleted) {
+      _batchWait = null;
+      wait.completeError(e); // the sender loop decides (resume or fail)
+      return;
+    }
+    if (reconnecting) {
+      reconnecting = false;
+      _fail(e); // reconnect itself failed
+      return;
+    }
+    if (_paired && e.code.resumable && !sm.state.isTerminal) {
+      _startReconnect();
+    } else {
+      _fail(e);
+    }
   }
 
   // ------------------------------------------------------------------ pairing
@@ -182,16 +249,9 @@ class MigrationController extends ChangeNotifier {
     try {
       _go(MigrationState.discovering);
       final caps = await _caps(myRole);
-      final id = await EphemeralIdentity.generate();
-      final h = PtpHost(role: myRole, device: _device, confirm: _confirmCb, caps: caps, identity: id);
-      await h.start();
-      host = h;
-      qrUri = h.qr.toUri();
-      _log.event('qr_shown', {'endpoints': h.endpoints.length, 'role': myRole});
-      qrExpires = h.expiresAt;
-      notifyListeners();
-      final ch = await h.accept();
-      await _onChannel(ch);
+      await _startWorker();
+      _isHost = true;
+      _worker!.send('host', {'role': myRole, 'device': _device, 'caps': caps});
     } on PtpException catch (e) {
       _fail(e);
     }
@@ -203,32 +263,41 @@ class MigrationController extends ChangeNotifier {
       final qr = QrPayload.parse(uri);
       await _closePrevious();
       _resetSession(qr.hostRole == 'receiver' ? 'sender' : 'receiver');
-      joinedUri = uri;
       _go(MigrationState.discovering);
       _go(MigrationState.pairing);
-      await _caps(role);
-      final ch = await joinSession(uri, device: _device, confirm: _confirmCb, capsForRole: (_) => _lastCaps!);
-      await _onChannel(ch);
+      final caps = await _caps(role);
+      await _startWorker();
+      _isHost = false;
+      _worker!.send('join', {'uri': uri, 'device': _device, 'caps': caps});
     } on PtpException catch (e) {
       _fail(e);
     }
   }
 
-  Capabilities? get _lastCaps => _capsCache;
-  Capabilities? _capsCache;
-
-  Future<void> _onChannel(PtpChannel ch) async {
-    channel = ch;
+  Future<void> _onPaired() async {
+    _paired = true;
     _go(MigrationState.capabilityExchange);
-    plan = ch.plan;
+    _log.event('paired', {'peerPlatform': peer?.platform, 'role': role, 'count': plan.length});
     _sessionRow ??= await db.startSession(role);
     if (role == 'sender') {
       _go(MigrationState.scanning);
       _go(MigrationState.preview);
     } else {
       _go(MigrationState.preparing);
-      unawaited(_receiveLoop());
+      await _requestNotifications();
+      await PtpPlatform.setTransferActive(true);
+      _startDeviceMonitor();
+      _sendReceiveCommand();
     }
+  }
+
+  void _sendReceiveCommand() {
+    final inbox = _inbox!;
+    _worker?.send('receive', {
+      'inbox': inbox,
+      'checkpoints': p.join(p.dirname(inbox), 'checkpoints'),
+      'reserve': storageReserve,
+    });
   }
 
   // ------------------------------------------------------------------ sender: selection
@@ -257,7 +326,6 @@ class MigrationController extends ChangeNotifier {
   int get selectedCount => selection.values.fold(0, (a, l) => a + l.length);
   int get selectedBytesHint => selection.values.expand((l) => l).fold(0, (a, i) => a + i.sizeHint);
 
-  /// Unique relPaths per category (two IMG_0001.HEIC from different years must not collide).
   List<SourceItem> _orderedSelection() {
     final out = <SourceItem>[];
     for (final c in categoryRegistry) {
@@ -282,6 +350,8 @@ class MigrationController extends ChangeNotifier {
     await _requestNotifications();
     await PtpPlatform.setTransferActive(true);
     _startDeviceMonitor();
+    _sendStarted = DateTime.now();
+    _sendStartBytes = 0;
     await _sendRemainingBatches();
   }
 
@@ -295,9 +365,11 @@ class MigrationController extends ChangeNotifier {
     return out;
   }
 
-  Future<List<TransferSource>> _openBatch(List<SourceItem> batch) async {
+  /// Opens the batch on the UI isolate (platform channels) and returns plain descriptions for the worker.
+  /// Unique relPaths per category (two IMG_0001.HEIC from different years must not collide).
+  Future<List<Map<String, Object?>>> _openBatch(List<SourceItem> batch) async {
     final seen = <String>{};
-    final out = <TransferSource>[];
+    final out = <Map<String, Object?>>[];
     var stagedBytes = 0;
     final free = probe?.freeBytes ?? 0;
     for (final it in batch) {
@@ -314,38 +386,44 @@ class MigrationController extends ChangeNotifier {
         final ext = p.extension(it.relPath);
         rel = '${p.withoutExtension(it.relPath)} (${n++})$ext';
       }
-      if (it.sizeHint == 0) progress.totalBytes += opened.size; // iOS Photos/contacts: size known only now
-      out.add(PlatformSource(it, opened, rel));
+      if (it.sizeHint == 0 && !_seenTransferIds.contains(_batchIds[_batchIndex])) {
+        progress.totalBytes += opened.size; // iOS Photos/contacts: size known only now
+      }
+      out.add({
+        'path': opened.path,
+        'relPath': rel,
+        'category': it.category,
+        'mime': it.mime,
+        'mtimeMs': opened.mtimeMs,
+        'token': opened.token,
+      });
     }
+    _seenTransferIds.add(_batchIds[_batchIndex]);
     return out;
   }
 
   Future<void> _sendRemainingBatches() async {
-    final ch = channel!;
-    final started = DateTime.now();
     try {
       while (_batchIndex < _batches.length) {
-        final sources = await _openBatch(_batches[_batchIndex]);
-        if (sources.length < _batches[_batchIndex].length) {
+        final items = await _openBatch(_batches[_batchIndex]);
+        if (items.length < _batches[_batchIndex].length) {
           // iOS staging limit hit: push the rest into a new batch right after this one.
-          final rest = _batches[_batchIndex].sublist(sources.length);
-          _batches[_batchIndex] = _batches[_batchIndex].sublist(0, sources.length);
+          final rest = _batches[_batchIndex].sublist(items.length);
+          _batches[_batchIndex] = _batches[_batchIndex].sublist(0, items.length);
           _batches.insert(_batchIndex + 1, rest);
           _batchIds.insert(_batchIndex + 1, b64u(randomBytes(16)));
         }
         _go(MigrationState.transferring);
-        final base = progress.doneBytes;
-        final rep = await runSender(ch, sources,
-            transferId: _batchIds[_batchIndex],
-            more: _batchIndex < _batches.length - 1,
-            cancel: _cancel,
-            pause: pauseGate, onProgress: (i, done, total, wire) {
-          progress
-            ..current = sources[i].relPath
-            ..doneBytes = base + wire
-            ..mbps = wire / 1e6 / (DateTime.now().difference(started).inMilliseconds / 1000 + 1e-3);
-          notifyListeners();
+        _progressBase = reports.fold(0, (a, r) => a + r.wireBytes);
+        final wait = Completer<TransferReport>();
+        _batchWait = wait;
+        _worker!.send('send', {
+          'transferId': _batchIds[_batchIndex],
+          'more': _batchIndex < _batches.length - 1,
+          'items': items,
         });
+        final rep = await wait.future;
+        _batchWait = null;
         reports.add(rep);
         _logBatch(rep);
         progress.doneFiles += rep.ok.length + rep.failed.length + rep.skipped.length;
@@ -353,55 +431,16 @@ class MigrationController extends ChangeNotifier {
       }
       await _finish();
     } on PtpException catch (e) {
-      if (e.code.resumable) {
-        await _reconnect();
+      if (e.code.resumable && !reconnecting) {
+        _startReconnect();
       } else {
+        reconnecting = false;
         _fail(e);
       }
     }
   }
 
   // ------------------------------------------------------------------ receiver
-  Future<void> _receiveLoop() async {
-    final inbox = await PtpPlatform.inboxDir();
-    _store ??= ReceiverStore(inbox, SqliteCheckpointStore(db), PtpPlatform.freeBytes, reserve: storageReserve);
-    await _requestNotifications();
-    await PtpPlatform.setTransferActive(true);
-    _startDeviceMonitor();
-    try {
-      while (true) {
-        final base = _recvBase;
-        final rep = await runReceiver(channel!, _store!, cancel: _cancel, approve: _approveCb,
-            onProgress: (i, done, total, wire) {
-          progress
-            ..current = _store!.manifest.files[i].path
-            ..doneBytes = base + wire;
-          notifyListeners();
-        });
-        reports.add(rep);
-        _recvBase += rep.wireBytes;
-        _logBatch(rep);
-        _queueImports(rep);
-        if (rep.failed.isEmpty) {
-          // Committed files were already moved out; drop the empty partial dir and its checkpoint (P2-15).
-          try {
-            await _store!.deletePartials();
-          } catch (_) {}
-        }
-        if (!rep.more) break;
-      }
-      _go(MigrationState.importing);
-      await _importQueue;
-      await _finish();
-    } on PtpException catch (e) {
-      if (e.code.resumable) {
-        await _reconnect();
-      } else {
-        _fail(e);
-      }
-    }
-  }
-
   bool _approvedOnce = false;
   final Set<String> _countedBatches = {};
   int _recvBase = 0;
@@ -409,7 +448,23 @@ class MigrationController extends ChangeNotifier {
   /// Receiver-side write permissions asked in this session: category -> granted|limited|denied.
   final Map<String, String> importPermission = {};
 
+  void _onReceivedBatch(TransferReport rep) {
+    reports.add(rep);
+    _recvBase += rep.wireBytes;
+    _progressBase = _recvBase;
+    _logBatch(rep);
+    _queueImports(rep);
+    notifyListeners();
+  }
+
+  Future<void> _onReceiveDone() async {
+    _go(MigrationState.importing);
+    await _importQueue;
+    await _finish();
+  }
+
   Future<bool> _approveCb(Manifest m, int needed) async {
+    _seenTransferIds.add(m.transferId);
     if (_countedBatches.add(m.transferId)) {
       progress
         ..totalFiles += m.files.length
@@ -474,10 +529,11 @@ class MigrationController extends ChangeNotifier {
       });
 
   Future<void> _closePrevious() async {
-    try {
-      await channel?.close();
-      await host?.close();
-    } catch (_) {}
+    await _workerSub?.cancel();
+    _workerSub = null;
+    final w = _worker;
+    _worker = null;
+    if (w != null) await w.dispose();
   }
 
   /// Copies the diagnostic log to Downloads (Android) / Files (iOS). Returns where it went.
@@ -495,7 +551,7 @@ class MigrationController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Imports run in order, concurrently with receiving the next batch.
+  /// Imports run in order on the UI isolate (platform channels), concurrently with receiving the next batch.
   void _queueImports(TransferReport rep) {
     final m = rep.manifest!;
     for (final e in rep.committedPaths.entries) {
@@ -514,77 +570,63 @@ class MigrationController extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------------ resume
-  Future<void> _reconnect() async {
+  void _startReconnect() {
     reconnecting = true;
-    _log.event('reconnect_start', {'role': role});
+    _log.event('reconnect_start', {'role': role, 'state': _isHost ? 'host' : 'joiner'});
     _go(MigrationState.failed);
+    _worker?.send('reconnect');
     notifyListeners();
-    await channel?.close();
-    final token = channel?.resumeToken;
-    final deadline = DateTime.now().add(resumeWindow);
-    try {
-      PtpChannel? ch;
-      if (host != null) {
-        host!.release();
-        ch = await host!.accept().timeout(resumeWindow);
-      } else {
-        while (ch == null) {
-          if (_cancel.isCancelled || DateTime.now().isAfter(deadline)) {
-            throw PtpException(PtpErrorCode.peerTimeout, 'resume window elapsed');
-          }
-          try {
-            ch = await joinSession(joinedUri!,
-                device: _device, confirm: _confirmCb, capsForRole: (_) => _lastCaps!, resumeToken: token);
-          } on PtpException catch (e) {
-            _log.event('reconnect_attempt', {'code': e.code.wire});
-            if (e.code != PtpErrorCode.peerTimeout && e.code != PtpErrorCode.sessionBusy) rethrow;
-            await Future<void>.delayed(const Duration(seconds: 3));
-          }
-        }
-      }
-      channel = ch;
-      reconnecting = false;
-      _go(MigrationState.pairing);
-      _go(MigrationState.authenticating);
-      _go(MigrationState.capabilityExchange);
-      _go(MigrationState.preparing);
-      if (role == 'sender') {
-        await _sendRemainingBatches();
-      } else {
-        await _receiveLoop();
-      }
-    } on TimeoutException {
-      reconnecting = false;
-      _fail(PtpException(PtpErrorCode.peerTimeout, 'resume window elapsed'));
-    } on PtpException catch (e) {
-      reconnecting = false;
-      _fail(e);
+  }
+
+  Future<void> _onResumed() async {
+    reconnecting = false;
+    _log.event('resumed', {'role': role});
+    _go(MigrationState.pairing);
+    _go(MigrationState.authenticating);
+    _go(MigrationState.capabilityExchange);
+    _go(MigrationState.preparing);
+    if (role == 'sender') {
+      await _sendRemainingBatches();
+    } else {
+      _sendReceiveCommand();
     }
   }
 
   // ------------------------------------------------------------------ pause / cancel / device state
   void togglePause() {
     userPaused = !userPaused;
-    if (userPaused) {
-      pauseGate.pause();
-    } else {
-      pauseGate.resume();
-    }
+    _applyPause();
     notifyListeners();
   }
 
+  void _applyPause() => _worker?.send(userPaused || _thermalPaused ? 'pause' : 'resume');
+
   Future<void> cancel() async {
-    _cancel.cancel();
-    _confirm?.complete(false);
+    _worker?.send('cancel');
     _approve?.complete(false);
+    _approve = null;
+    if (pendingSas != null) answerConfirm(false);
     if (!sm.state.isTerminal) _go(MigrationState.cancelled);
+    // Give the worker a moment to tell the peer, then stop it.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     await _teardown();
     await _record('cancelled', PtpErrorCode.userCancelled);
     notifyListeners();
   }
 
+  /// "Xóa dữ liệu tạm": removes partial files and checkpoints of this session's batches (worker may be gone).
   Future<void> deletePartials() async {
-    await _store?.deletePartials();
+    final inbox = _inbox;
+    if (inbox == null) return;
+    for (final tid in _seenTransferIds) {
+      try {
+        final d = Directory(p.join(inbox, '.ptp-partial', tid));
+        if (await d.exists()) await d.delete(recursive: true);
+        final cp = File(p.join(p.dirname(inbox), 'checkpoints', '$tid.state.json'));
+        if (await cp.exists()) await cp.delete();
+      } catch (_) {}
+    }
+    _log.event('partials_deleted', {'count': _seenTransferIds.length});
     notifyListeners();
   }
 
@@ -600,8 +642,10 @@ class MigrationController extends ChangeNotifier {
         final warn = hot ? 'thermal_pause' : (low ? 'battery_low' : null);
         if (warn != deviceWarning) _log.event('device', {'thermal': st['thermal'], 'battery': pct, 'charging': st['charging']});
         deviceWarning = warn;
-        if (hot && !pauseGate.isPaused) pauseGate.pause();
-        if (!hot && pauseGate.isPaused && !userPaused) pauseGate.resume();
+        if (hot != _thermalPaused) {
+          _thermalPaused = hot;
+          _applyPause();
+        }
         notifyListeners();
       } catch (_) {}
     });
@@ -643,8 +687,7 @@ class MigrationController extends ChangeNotifier {
     try {
       await PtpPlatform.setTransferActive(false);
     } catch (_) {}
-    await channel?.close();
-    await host?.close();
+    await _closePrevious();
   }
 
   Future<void> _record(String state, PtpErrorCode? code) async {
@@ -659,7 +702,7 @@ class MigrationController extends ChangeNotifier {
     }
     await db.finishSession(row,
         state: state,
-        peerPlatform: channel?.peer.platform,
+        peerPlatform: peer?.platform,
         errorCode: code?.wire,
         ok: okCount,
         failed: failedCount,
@@ -673,11 +716,13 @@ class MigrationController extends ChangeNotifier {
     role = myRole;
     sm.reset();
     error = null;
-    host = null;
-    channel = null;
+    peer = null;
+    _paired = false;
     qrUri = null;
-    joinedUri = null;
+    qrEndpoints = const [];
     reconnecting = false;
+    pendingSas = null;
+    pendingManifest = null;
     selection.clear();
     permission.clear();
     reports.clear();
@@ -685,13 +730,16 @@ class MigrationController extends ChangeNotifier {
     _batches = [];
     _batchIds.clear();
     _batchIndex = 0;
+    _batchWait = null;
     _approvedOnce = false;
     _countedBatches.clear();
+    _seenTransferIds.clear();
     _recvBase = 0;
+    _progressBase = 0;
     importPermission.clear();
     _sessionRow = null;
-    _store = null;
-    _cancel = CancelToken();
+    userPaused = false;
+    _thermalPaused = false;
     progress
       ..doneBytes = 0
       ..totalBytes = 0
