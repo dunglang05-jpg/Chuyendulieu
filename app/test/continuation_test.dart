@@ -133,15 +133,19 @@ void main() {
           reserve: 0, resumeAllowed: (_) => allow);
 
       var (h, hc, jc) = await pair();
-      final token = CancelToken();
       Future<Object?> settle(Future<Object?> f) => f.then<Object?>((r) => r, onError: (Object e) => e);
+      // First session dies after the 8 MiB checkpoint, like an app that was killed: the socket just vanishes.
+      var killed = false;
       await Future.wait([
         settle(runReceiver(hc, mk(false))),
-        settle(runSender(jc, [FileSource(video.path, 'v.mp4', 'videos')], transferId: tid, cancel: token,
-            onProgress: (i, d, t, w) {
-          if (w > 8 * 1024 * 1024 + 512 * 1024) token.cancel();
+        settle(runSender(jc, [FileSource(video.path, 'v.mp4', 'videos')], transferId: tid, onProgress: (i, d, t, w) {
+          if (!killed && w > 8 * 1024 * 1024 + 512 * 1024) {
+            killed = true;
+            jc.socket.destroy();
+          }
         })),
-      ]);
+      ]).timeout(const Duration(seconds: 60), onTimeout: () => throw StateError('first session hung'));
+      await hc.close();
       await h.close();
 
       (h, hc, jc) = await pair();
@@ -151,7 +155,7 @@ void main() {
         runSender(jc, [FileSource(video.path, 'v.mp4', 'videos')], transferId: tid, onProgress: (i, d, t, w) {
           if (starts.isEmpty) starts.add(d - w);
         }),
-      ]);
+      ]).timeout(const Duration(seconds: 60), onTimeout: () => throw StateError('second session hung'));
       expect(starts.single, 0, reason: 'restarted from 0: the earlier partial was not trusted');
       expect(sha(File(r[0].committedPaths[0]!)), sha(video));
       await h.close();
