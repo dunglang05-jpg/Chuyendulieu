@@ -33,7 +33,7 @@ The QR states the host's data role; the joiner takes the opposite one. Either ph
 | `fp` | 32 bytes; the only trust anchor for the host's identity |
 | `role` | `sender` or `receiver` (host's data role) |
 | `pf` | `android`, `ios`, `desktop_reference` — display hint only, never used for capability decisions |
-| `f` | non-sensitive feature flags (strings) |
+| `f` | non-sensitive feature flags (strings): `usb` = cable only (host listens on 127.0.0.1); `usbauto` = Wi-Fi, may move to a USB-C cable via resume (Android ↔ Android) |
 
 Never in the QR: device name, file names, contacts, tokens, passwords, OTP, private keys.
 

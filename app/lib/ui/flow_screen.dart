@@ -10,6 +10,7 @@ import '../app/controller.dart';
 import '../core/domain/categories.dart';
 import '../core/domain/state_machine.dart';
 import '../core/protocol/errors.dart';
+import '../core/transfer/path_policy.dart';
 import '../l10n/strings.dart';
 import 'info_screens.dart';
 
@@ -45,7 +46,7 @@ class FlowScreen extends StatefulWidget {
 
 class _FlowScreenState extends State<FlowScreen> {
   bool _scanning = false;
-  bool _usb = false;
+  String _mode = 'wifi'; // wifi | auto | usb
   MigrationController get c => widget.controller;
 
   @override
@@ -90,9 +91,9 @@ class _FlowScreenState extends State<FlowScreen> {
                 c.joinQr(code);
               }) : _ConnectChoice(
                 role: widget.role,
-                usb: _usb,
-                onTransport: (v) => setState(() => _usb = v),
-                onShow: () => c.showQr(widget.role, usb: _usb),
+                mode: _mode,
+                onTransport: (v) => setState(() => _mode = v),
+                onShow: () => c.showQr(widget.role, mode: _mode),
                 onScan: () => setState(() => _scanning = true));
       case MigrationState.discovering:
       case MigrationState.pairing:
@@ -132,10 +133,10 @@ class _FlowScreenState extends State<FlowScreen> {
 
 class _ConnectChoice extends StatelessWidget {
   const _ConnectChoice(
-      {required this.role, required this.usb, required this.onTransport, required this.onShow, required this.onScan});
+      {required this.role, required this.mode, required this.onTransport, required this.onShow, required this.onScan});
   final String role;
-  final bool usb;
-  final ValueChanged<bool> onTransport;
+  final String mode;
+  final ValueChanged<String> onTransport;
   final VoidCallback onShow;
   final VoidCallback onScan;
 
@@ -148,17 +149,20 @@ class _ConnectChoice extends StatelessWidget {
     return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (Platform.isAndroid) ...[
         // Cable mode is offered on Android only: iPhone apps have no public USB API (docs/USB_C_OTG_RESEARCH.md).
-        SegmentedButton<bool>(
+        // Wi-Fi stays the default; both cable modes are experimental until real-device tests pass.
+        SegmentedButton<String>(
           segments: [
-            ButtonSegment(value: false, icon: const Icon(Icons.wifi_rounded), label: Text(S.t('transport_wifi'))),
-            ButtonSegment(value: true, icon: const Icon(Icons.usb_rounded), label: Text(S.t('transport_usb'))),
+            ButtonSegment(value: 'wifi', icon: const Icon(Icons.wifi_rounded), label: Text(S.t('transport_wifi'))),
+            ButtonSegment(value: 'auto', icon: const Icon(Icons.swap_horiz_rounded), label: Text(S.t('transport_auto'))),
+            ButtonSegment(value: 'usb', icon: const Icon(Icons.usb_rounded), label: Text(S.t('transport_usb'))),
           ],
-          selected: {usb},
+          selected: {mode},
           onSelectionChanged: (s) => onTransport(s.first),
         ),
         const SizedBox(height: 16),
       ],
-      Text(usb ? S.t('usb_hint') : S.t('same_wifi'), textAlign: TextAlign.center),
+      Text(switch (mode) { 'usb' => S.t('usb_hint'), 'auto' => S.t('auto_hint'), _ => S.t('same_wifi') },
+          textAlign: TextAlign.center),
       if (!Platform.isAndroid) ...[
         const SizedBox(height: 8),
         Text(S.t('usb_ios_unsupported'), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
@@ -216,6 +220,39 @@ class _QrViewState extends State<_QrView> {
         const SizedBox(height: 12),
         Text(S.t('no_wifi_ip'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
       ],
+    ]);
+  }
+}
+
+/// Which link the session is on right now and, in "Tự động", why (from real measurements only).
+class _PathInfo extends StatelessWidget {
+  const _PathInfo({required this.c});
+  final MigrationController c;
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    String? note;
+    if (c.switchingPath) {
+      note = S.t(c.pathReason == PathReason.cableConnected || c.pathReason == PathReason.wifiUnmeasured
+          ? 'path_moving_cable'
+          : 'path_moving_wifi');
+    } else if (c.pathReason == PathReason.cableSlower) {
+      note = S.t('path_cable_slower', {
+        'cable': c.pathCableMbps?.toStringAsFixed(1) ?? '?',
+        'wifi': c.pathWifiMbps?.toStringAsFixed(1) ?? '?',
+      });
+    } else if (c.pathReason == PathReason.cableLost) {
+      note = S.t('path_cable_lost');
+    } else if (c.transport == 'auto' && c.cableArmed && !c.onCable) {
+      note = S.t('path_plug_hint');
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Icon(c.onCable ? Icons.usb_rounded : Icons.wifi_rounded),
+        const SizedBox(width: 8),
+        Expanded(child: Text(S.t(c.onCable ? 'path_on_cable' : 'path_on_wifi'))),
+      ]),
+      if (note != null) ...[const SizedBox(height: 4), Text(note, style: tt.bodySmall)],
     ]);
   }
 }
@@ -427,7 +464,8 @@ class _TransferView extends StatelessWidget {
       if (pr.mbps > 0) Text(S.t('speed', {'mbps': pr.mbps.toStringAsFixed(1)})),
       const SizedBox(height: 8),
       Text(pr.current, maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall),
-      if (c.reconnecting) ...[
+      if (c.transport != 'wifi') ...[const SizedBox(height: 16), _PathInfo(c: c)],
+      if (c.reconnecting && !c.switchingPath) ...[
         const SizedBox(height: 16),
         Row(children: [const Icon(Icons.wifi_off_rounded), const SizedBox(width: 8), Expanded(child: Text(S.t('reconnecting')))]),
       ],

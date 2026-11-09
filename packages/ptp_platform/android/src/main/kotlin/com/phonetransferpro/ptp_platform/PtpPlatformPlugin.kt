@@ -126,7 +126,11 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
             // USB-C Android↔Android link (AOA). See docs/USB_C_OTG_ARCHITECTURE.md. NOT TESTED ON DEVICES.
             "usbStatus" -> result.success(usbTransport.status())
             "usbStart" -> {
-                usbTransport.start(call.argument<String>("mode") ?: "listen", call.argument<Int>("port") ?: 0)
+                usbTransport.start(
+                    call.argument<String>("mode") ?: "listen",
+                    call.argument<Int>("port") ?: 0,
+                    (call.argument<Number>("timeoutMs")?.toLong() ?: 90_000L).coerceIn(5_000L, 12 * 3_600_000L),
+                )
                 result.success(usbTransport.status())
             }
             "usbStop" -> {

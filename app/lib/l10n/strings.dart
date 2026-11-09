@@ -79,10 +79,25 @@ class S {
     'delete_partial': {'vi': 'Xóa dữ liệu tạm', 'en': 'Delete partial data'},
     'finish': {'vi': 'Xong', 'en': 'Done'},
     'transport_wifi': {'vi': 'Wi-Fi / mạng', 'en': 'Wi-Fi / LAN'},
-    'transport_usb': {'vi': 'Cáp USB-C (thử nghiệm)', 'en': 'USB-C cable (experimental)'},
+    'transport_usb': {'vi': 'Chỉ cáp', 'en': 'Cable only'},
+    'transport_auto': {'vi': 'Tự động', 'en': 'Auto'},
+    'auto_hint': {
+      'vi': 'Thử nghiệm, chỉ Android ↔ Android. Bắt đầu bằng Wi-Fi. Nếu bạn cắm cáp USB-C trong lúc chuyển, ứng dụng thử chuyển sang cáp, đo tốc độ thật và chỉ giữ cáp nếu cáp nhanh hơn. Rút cáp thì tự quay lại Wi-Fi. Lần đầu cắm cáp, hãy bấm Cho phép trên màn hình.',
+      'en': 'Experimental, Android ↔ Android only. Starts on Wi-Fi. If you plug in a USB-C cable during the transfer, the app tries the cable, measures the real speed and keeps it only if it is faster. Unplugging returns to Wi-Fi. Tap Allow the first time you plug in.'
+    },
+    'path_on_wifi': {'vi': 'Đang truyền qua Wi-Fi', 'en': 'Transferring over Wi-Fi'},
+    'path_on_cable': {'vi': 'Đang truyền qua cáp USB-C', 'en': 'Transferring over the USB-C cable'},
+    'path_plug_hint': {'vi': 'Cắm cáp USB-C giữa hai máy để thử truyền qua cáp.', 'en': 'Plug a USB-C cable between the phones to try the cable.'},
+    'path_moving_cable': {'vi': 'Đã phát hiện cáp — đang chuyển sang cáp…', 'en': 'Cable detected — moving to the cable…'},
+    'path_moving_wifi': {'vi': 'Đang quay lại Wi-Fi…', 'en': 'Moving back to Wi-Fi…'},
+    'path_cable_slower': {
+      'vi': 'Cáp đo được {cable} MB/s, chậm hơn Wi-Fi ({wifi} MB/s), nên tiếp tục dùng Wi-Fi.',
+      'en': 'The cable measured {cable} MB/s, slower than Wi-Fi ({wifi} MB/s), so Wi-Fi is kept.'
+    },
+    'path_cable_lost': {'vi': 'Đã rút cáp — tiếp tục qua Wi-Fi.', 'en': 'Cable unplugged — continuing over Wi-Fi.'},
     'usb_hint': {
-      'vi': 'Chỉ Android ↔ Android. Nối hai máy bằng cáp USB-C có truyền dữ liệu, mở khóa cả hai máy, mở ứng dụng ở cả hai và chọn Cáp USB-C. Vẫn cần quét mã QR để xác thực. Ở chế độ này ứng dụng không dùng Wi-Fi.',
-      'en': 'Android ↔ Android only. Connect with a USB-C data cable, unlock both phones, open the app on both and choose USB-C cable. The QR scan is still required. Wi-Fi is not used in this mode.'
+      'vi': 'Chỉ Android ↔ Android. Nối hai máy bằng cáp USB-C có truyền dữ liệu, mở khóa cả hai máy, mở ứng dụng ở cả hai và chọn Chỉ cáp. Vẫn cần quét mã QR để xác thực. Ở chế độ này ứng dụng không dùng Wi-Fi.',
+      'en': 'Android ↔ Android only. Connect with a USB-C data cable, unlock both phones, open the app on both and choose Cable only. The QR scan is still required. Wi-Fi is not used in this mode.'
     },
     'usb_ios_unsupported': {
       'vi': 'iPhone không cho ứng dụng dùng cổng USB để truyền dữ liệu, nên chỉ có chế độ Wi-Fi.',

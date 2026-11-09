@@ -17,6 +17,7 @@ class DiagLog {
     'state', 'from', 'to', 'code', 'role', 'peerPlatform', 'platform', 'os', 'model', 'category', 'perm',
     'status', 'bytes', 'files', 'ok', 'failed', 'skipped', 'ms', 'mbps', 'batch', 'batches', 'attempt',
     'thermal', 'battery', 'charging', 'count', 'resumed', 'more', 'needed', 'free', 'endpoints', 'version',
+    'reason', 'wifiMbps', 'cableMbps',
   };
 
   /// Values: numbers/bools, or ≤ 48 chars of letters, digits, space and `._:-+()`. Rejects '/', '@', '\',

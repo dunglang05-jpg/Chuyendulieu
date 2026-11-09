@@ -52,7 +52,32 @@ Vai trò USB (máy nào là USB host) **độc lập** với vai trò QR. Máy n
 * Không thêm quyền runtime nào; quyền USB do hệ thống hỏi cho từng thiết bị.
 * Log chỉ ghi `state`, `role`, mã lỗi (đã lọc theo whitelist).
 
-## 6. Chưa làm (sau khi POC chạy được trên máy thật)
-* Chế độ **Tự động / Ưu tiên USB** (hiện có Wi-Fi hoặc Chỉ USB).
+## 6. Chế độ "Tự động" (Wi-Fi → cáp giữa chừng) — NOT_TESTED trên máy thật
+
+Ba lựa chọn trên màn kết nối (chỉ Android): **Wi-Fi** (mặc định), **Tự động** (thử nghiệm), **Chỉ cáp** (thử nghiệm).
+Máy hiện QR quyết định chế độ; QR mang cờ `usbauto` (hoặc `usb` với Chỉ cáp).
+
+1. Phiên bắt đầu qua Wi-Fi như bình thường. Sau khi ghép đôi, nếu **cả hai máy là Android** và có hỗ trợ USB, cả hai
+   bắt đầu chờ cáp ở chế độ nền (tối đa 6 giờ, kiểm tra mỗi 1 giây để tiết kiệm pin). Máy host chuyển kết nối từ cáp
+   vào đúng cổng TLS của nó; máy joiner mở cổng cáp trên `127.0.0.1`.
+2. Khi người dùng cắm cáp và đồng ý quyền USB, liên kết AOA được lập. **Chỉ khi đang truyền dữ liệu** (không trong lúc
+   chọn dữ liệu, duyệt, tạm dừng hay đang kết nối lại), máy joiner ghi lại tốc độ Wi-Fi đo được 5 giây gần nhất rồi đóng
+   socket Wi-Fi và kết nối lại qua cáp bằng **PTP/1 resume**: cùng phiên, ghim lại chứng chỉ theo QR, bằng chứng resume,
+   máy nhận tiếp tục từ checkpoint. Cáp không được tin tưởng hơn Wi-Fi.
+3. Bỏ qua 3 giây đầu, đo 8 giây trên cáp. Nếu cáp **< 85%** tốc độ Wi-Fi vừa đo → quay lại Wi-Fi và không thử lại cho
+   tới khi rút/cắm lại cáp. Nếu chưa đo được Wi-Fi (cắm cáp ngay từ đầu) → giữ cáp, không so với số đoán.
+4. Rút cáp khi đang chạy trên cáp → quay về Wi-Fi qua cùng cơ chế resume; tiếp tục chờ cáp cắm lại.
+5. Lỗi quyền USB / thiết bị lạ / máy không hỗ trợ → dừng thử cáp, ở lại Wi-Fi, không hỏi lại.
+
+Mã: `core/transfer/path_policy.dart` (quyết định, thuần logic), `MigrationController._armUsbAuto/_pathTick`,
+lệnh worker `dial`. Log: `path_switch from/to/reason/wifiMbps/cableMbps` (không có dữ liệu cá nhân).
+Test: `path_policy_test.dart` (6 quyết định), `path_handover_test.dart` (đổi đường giữa một tệp 24 MB qua hai bộ
+chuyển tiếp TCP cục bộ — chứng minh cơ chế resume, **không** chứng minh tốc độ cáp hay phần cứng USB).
+
+Giới hạn: kênh AOA là USB 2.0, có thể chậm hơn Wi-Fi 5 GHz tốt — vì vậy quyết định dựa trên số đo, không mặc định
+"cáp nhanh hơn". Mỗi lần đổi đường mất vài giây kết nối lại và có thể gửi lại tối đa phần chưa checkpoint (≤ 8 MiB).
+Không áp dụng khi có iPhone.
+
+## 7. Chưa làm (sau khi POC chạy được trên máy thật)
 * Ethernet có dây (W2) và nhập ảnh qua PTP từ iPhone (W3) — xem tài liệu nghiên cứu.
 * Đo hiệu năng: tốc độ, CPU, RAM, nhiệt độ, pin, thời gian thiết lập (chỉ sau khi có thiết bị).

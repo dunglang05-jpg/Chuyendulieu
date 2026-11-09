@@ -104,8 +104,9 @@ class PtpPlatform {
       Map<String, Object?>.from(await _call<Map>('usbStatus'));
 
   /// mode 'listen' (this app joins: returns bridgePort once connected) or 'connect' (this app hosts on [port]).
-  static Future<Map<String, Object?>> usbStart(String mode, {int port = 0}) async =>
-      Map<String, Object?>.from(await _call<Map>('usbStart', {'mode': mode, 'port': port}));
+  /// [timeoutMs]: how long to wait for a cable (90 s when the user picked cable-only; the whole session in "auto").
+  static Future<Map<String, Object?>> usbStart(String mode, {int port = 0, int timeoutMs = 90000}) async =>
+      Map<String, Object?>.from(await _call<Map>('usbStart', {'mode': mode, 'port': port, 'timeoutMs': timeoutMs}));
 
   static Future<void> usbStop() => _call<void>('usbStop');
 }

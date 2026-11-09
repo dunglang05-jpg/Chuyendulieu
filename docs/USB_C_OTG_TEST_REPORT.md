@@ -24,6 +24,7 @@ Lỗi thật được test bắt và đã sửa: bridge ghi tên lớp exception
 | Chiều | Phương thức | Trạng thái |
 |---|---|---|
 | Android → Android | AOA, cáp USB-C ↔ USB-C | **NOT_TESTED** (có code + build + test JVM) |
+| Android → Android | Tự động: Wi-Fi → cáp giữa chừng | **NOT_TESTED** (có code + test Dart mô phỏng đổi đường; chưa chạy trên máy) |
 | Android → iPhone | — | **UNSUPPORTED** (không có API USB cho app trên iPhone); dùng Wi-Fi |
 | iPhone → Android | PTP nhập ảnh/video (chỉ đọc) | **RESTRICTED** — chưa triển khai trong POC này |
 | iPhone → iPhone | — | **UNSUPPORTED** (không có API USB cho app trên iPhone) |
@@ -44,6 +45,16 @@ Lỗi thật được test bắt và đã sửa: bridge ghi tên lớp exception
 **Nếu không kết nối được**, chụp màn hình thông báo lỗi và thử:
 - Một máy vào thông báo USB → **USB do … điều khiển** → đổi sang máy kia.
 - Đổi cáp khác (rất nhiều cáp chỉ sạc).
+
+### 3b. Thử chế độ Tự động (Wi-Fi → cáp)
+
+1. Hai máy Android, **chưa cắm cáp**. Máy nhận: **Nhận dữ liệu** → **Tự động** → **Hiện mã QR**; máy gửi quét mã, so mã 6 số.
+2. Chọn một video lớn (≥ 2 GB nếu có) → **Bắt đầu chuyển**. Màn hình phải ghi "Đang truyền qua Wi-Fi".
+3. Sau khoảng 20 giây, cắm cáp USB-C, bấm **Cho phép** nếu được hỏi. Ghi lại: màn hình có đổi sang "Đang truyền qua cáp
+   USB-C" không, hay báo "Cáp đo được … chậm hơn Wi-Fi"; tốc độ trước và sau.
+4. Rút cáp giữa chừng → phải tự quay lại Wi-Fi và tiếp tục. Cắm lại → thử cáp lần nữa.
+5. Tắt Wi-Fi một máy khi đang chạy trên cáp → phải vẫn chạy tiếp qua cáp.
+6. Kết thúc: SHA-256 khớp (màn kết quả không có tệp lỗi), xuất log chẩn đoán cả hai máy.
 
 ## 4. Mẫu ghi kết quả (mỗi lần thử một dòng)
 

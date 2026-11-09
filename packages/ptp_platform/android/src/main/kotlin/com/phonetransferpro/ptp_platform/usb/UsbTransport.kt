@@ -124,6 +124,8 @@ class UsbTransport(private val context: Context) {
         if (!hostSupported && !accessorySupported) throw IOException("USB_NOT_SUPPORTED")
         val deadline = System.currentTimeMillis() + timeoutMs
         val triedSwitch = HashSet<String>()
+        // Long waits ("auto" mode: a cable may be plugged in at any time) poll less often to save battery.
+        val pollMs = if (timeoutMs > 5 * 60_000L) 1_000L else 300L
         while (!stopRequested) {
             if (System.currentTimeMillis() > deadline) throw IOException("USB_TIMEOUT")
             // 1) We are the accessory: the peer already switched us.
@@ -158,7 +160,7 @@ class UsbTransport(private val context: Context) {
                 state = "switching"
                 switchToAccessory(d) // the peer re-enumerates with the Google AOA VID/PID; loop picks it up
             }
-            Thread.sleep(300)
+            Thread.sleep(pollMs)
         }
         throw IOException("STOPPED")
     }

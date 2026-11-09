@@ -112,6 +112,8 @@ class _Worker {
         unawaited(_guard(() => _receive(a as Map<String, Object?>)));
       case 'reconnect':
         unawaited(_guard(_reconnect));
+      case 'dial':
+        _dial(a as Map<String, Object?>);
       case 'pause':
         _pause.pause();
       case 'resume':
@@ -149,7 +151,23 @@ class _Worker {
   void _paired() {
     final ch = _ch!;
     _resumeToken = ch.resumeToken;
-    _emit('paired', {'peer': ch.peer, 'plan': ch.plan.toList(), 'resumed': ch.resumed});
+    bool loopback;
+    try {
+      loopback = ch.socket.remoteAddress.isLoopback;
+    } catch (_) {
+      loopback = false;
+    }
+    _emit('paired', {'peer': ch.peer, 'plan': ch.plan.toList(), 'resumed': ch.resumed, 'loopback': loopback});
+  }
+
+  /// "Tự động" path switch (joiner only, it is the side that dials). Replaces the endpoints used by the next
+  /// (re)connect; with `drop`, closes the live socket so the normal PTP/1 resume moves the session onto the new
+  /// path: same session, certificate pinned again, resume proof, receiver continues from its checkpoints.
+  void _dial(Map<String, Object?> a) {
+    if (_host != null || _joinUri == null) return;
+    _joinUri = a['uri'] as String;
+    _log('path_dial', {'to': a['to'], 'state': a['drop'] == true ? 'drop' : 'next'});
+    if (a['drop'] == true) _ch?.socket.destroy();
   }
 
   Future<void> _startHost(Map<String, Object?> a) async {
@@ -254,7 +272,8 @@ class _Worker {
         } on PtpException catch (e) {
           _log('reconnect_attempt', {'code': e.code.wire});
           if (e.code != PtpErrorCode.peerTimeout && e.code != PtpErrorCode.sessionBusy) rethrow;
-          await Future<void>.delayed(const Duration(seconds: 3));
+          // Busy = the host has not noticed the old socket closing yet (typical right after a path switch).
+          await Future<void>.delayed(Duration(seconds: e.code == PtpErrorCode.sessionBusy ? 1 : 3));
         }
       }
     }
