@@ -27,6 +27,12 @@
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
 
+    <!-- "Ứng dụng" (Android → Android): list the user's installed apps and read their APK files (never app data);
+         on the receiver, install them through the system installer, which asks the user for every app.
+         QUERY_ALL_PACKAGES is restricted on Google Play: a Play build must justify it or drop this category. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Optional: the USB-C cable mode needs host or accessory support, but the app must stay installable
          without it (Wi-Fi is the default transport). -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />

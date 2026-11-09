@@ -28,6 +28,7 @@ IconData categoryIcon(String id) => switch (id) {
       'contacts' => Icons.person_outline_rounded,
       'documents' => Icons.description_outlined,
       'audio' => Icons.music_note_outlined,
+      'apps' => Icons.apps_rounded,
       _ => Icons.folder_outlined,
     };
 
@@ -374,6 +375,16 @@ class _UsbStatus extends StatelessWidget {
         Text(usbReason(c.usbError!), textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
     ]);
   }
+}
+
+/// Readable reason for an import that needs attention (falls back to the raw status/codes).
+String importNote(ImportOutcome i) {
+  final m = i.message;
+  if (m != null) {
+    final t = S.t('imp_$m');
+    if (t != 'imp_$m') return t;
+  }
+  return '${i.status} · ${i.location ?? ''} ${m ?? ''}';
 }
 
 String usbReason(String code) {
@@ -869,7 +880,7 @@ class _ReportView extends StatelessWidget {
         const SizedBox(height: 16),
         ClayNote(text: S.t('report_action', {'n': needsAction.length}), icon: Icons.touch_app_rounded),
         for (final i in needsAction.take(50))
-          ListTile(dense: true, title: Text(i.name), subtitle: Text('${i.status} · ${i.location ?? ''} ${i.message ?? ''}')),
+          ListTile(dense: true, title: Text(i.name), subtitle: Text(importNote(i))),
       ],
       if (deniedImport.isNotEmpty) ...[
         const SizedBox(height: 12),

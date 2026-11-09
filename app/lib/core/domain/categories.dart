@@ -70,6 +70,14 @@ const List<CategoryInfo> categoryRegistry = [
         'iOS không cho ứng dụng khác đọc/ghi thư viện Nhạc. Chỉ gửi tệp bạn chọn; khi nhận, tệp nằm trong ứng dụng Tệp.'),
   ),
   CategoryInfo(
+    'apps', 'Ứng dụng', 'Apps',
+    PlatformSupport(SupportStatus.supported, SupportStatus.officialFlow,
+        'Chỉ gửi tệp cài đặt (APK) của ứng dụng bạn đã cài — không có dữ liệu bên trong ứng dụng (tin nhắn, đăng nhập). '
+            'Máy nhận hỏi "Cài đặt?" cho từng ứng dụng. Chỉ Android → Android. Thử nghiệm, chưa kiểm tra trên máy thật.'),
+    PlatformSupport(SupportStatus.unsupported, SupportStatus.unsupported,
+        'iPhone không cho ứng dụng khác cài hoặc xuất ứng dụng; hãy cài lại từ App Store.'),
+  ),
+  CategoryInfo(
     'calendar', 'Lịch', 'Calendar',
     PlatformSupport(SupportStatus.unsupported, SupportStatus.unsupported, 'Chưa triển khai trong phiên bản này.'),
     PlatformSupport(SupportStatus.unsupported, SupportStatus.unsupported, 'Chưa triển khai trong phiên bản này.'),
@@ -82,7 +90,9 @@ const List<(String, String)> notTransferable = [
       'Android chỉ cho ứng dụng SMS mặc định truy cập; iOS không có API cho ứng dụng bên thứ ba.'),
   ('Dữ liệu riêng của ứng dụng khác (Zalo, Messenger, Facebook, WhatsApp, ngân hàng…)',
       'Hệ điều hành cô lập dữ liệu mỗi ứng dụng. Hãy dùng sao lưu/khôi phục hoặc đăng nhập chính thức của từng ứng dụng.'),
-  ('Ứng dụng đã cài', 'Không thể cài hộ. Ứng dụng có thể hiển thị danh sách để bạn tự cài từ CH Play/App Store (đang phát triển).'),
+  ('Cài ứng dụng im lặng; dữ liệu và đăng nhập bên trong ứng dụng',
+      'Android → Android: chỉ chuyển tệp cài đặt và máy nhận hỏi "Cài đặt?" cho từng ứng dụng. Cài im lặng và dữ liệu '
+          'riêng của ứng dụng chỉ ứng dụng hệ thống của hãng (Clone Phone, Smart Switch…) mới làm được.'),
   ('Mật khẩu, phiên đăng nhập, OTP, khóa', 'Không bao giờ được trích xuất. Đăng nhập lại trên máy mới.'),
   ('Ghi chú (Notes)', 'Chỉ qua chức năng xuất/chia sẻ của ứng dụng Ghi chú, lưu thành tài liệu rồi chuyển.'),
 ];

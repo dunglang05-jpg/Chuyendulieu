@@ -15,6 +15,32 @@ class S {
     'send': {'vi': 'Gửi dữ liệu', 'en': 'Send data'},
     'apps_title': {'vi': 'Chuyển ứng dụng', 'en': 'Move apps'},
     'apps_tile': {'vi': 'Chuyển ứng dụng', 'en': 'Move apps'},
+    'apps_pick_title': {'vi': 'Chọn ứng dụng', 'en': 'Choose apps'},
+    'apps_pick_note': {
+      'vi': 'Chỉ gửi tệp cài đặt, không có tin nhắn/đăng nhập bên trong. Máy nhận sẽ hỏi “Cài đặt?” cho từng ứng dụng. '
+          'Ứng dụng ngân hàng/ví có thể không chạy nếu không cài từ CH Play — nên cài lại từ CH Play.',
+      'en': 'Only the install files are sent, no messages/logins inside. The new phone asks “Install?” for each app. '
+          'Banking/wallet apps may refuse to run unless installed from Google Play — reinstall those from Play.'
+    },
+    'apps_all': {'vi': 'Chọn tất cả', 'en': 'Select all'},
+    'apps_none': {'vi': 'Bỏ chọn', 'en': 'Clear'},
+    'apps_done': {'vi': 'Xong ({n})', 'en': 'Done ({n})'},
+    'imp_INSTALL_CANCELLED': {'vi': 'Bạn đã bấm Hủy khi cài.', 'en': 'Install was cancelled.'},
+    'imp_INSTALL_PERMISSION': {
+      'vi': 'Cần cho phép “Cài ứng dụng không rõ nguồn gốc” cho Chuyển dữ liệu.',
+      'en': 'Allow “Install unknown apps” for Chuyển dữ liệu.'
+    },
+    'imp_INSTALL_CONFLICT': {
+      'vi': 'Máy đã có ứng dụng này với chữ ký khác — gỡ bản cũ hoặc cài từ CH Play.',
+      'en': 'A different-signature copy is installed — uninstall it or use Google Play.'
+    },
+    'imp_INSTALL_INCOMPATIBLE': {
+      'vi': 'Ứng dụng không hợp với máy này (phiên bản Android/CPU). Cài từ CH Play.',
+      'en': 'Not compatible with this phone (Android version/CPU). Install from Google Play.'
+    },
+    'imp_INSTALL_STORAGE': {'vi': 'Không đủ dung lượng để cài.', 'en': 'Not enough storage to install.'},
+    'imp_INSTALL_BLOCKED': {'vi': 'Máy chặn cài đặt (chính sách/Play Protect).', 'en': 'Install blocked (policy/Play Protect).'},
+    'imp_INSTALL_TIMEOUT': {'vi': 'Chờ quá lâu, chưa cài.', 'en': 'Timed out, not installed.'},
     'apps_tile_sub': {'vi': 'Bằng công cụ chính thức của Google / Apple', 'en': 'With Google\'s / Apple\'s official tool'},
     'apps_why': {
       'vi': 'Chỉ ứng dụng hệ thống của hãng (như Smart Switch) mới tự cài app không cần hỏi. Cách chính thức và tự động nhất là công cụ của Google/Apple lúc thiết lập máy mới — hướng dẫn bên dưới. Sau đó dùng Chuyển dữ liệu cho tài liệu và phần còn lại.',

@@ -33,5 +33,5 @@ const int storageReserve = 256 * 1024 * 1024;
 /// Default iOS staging batch (see PROTOCOL_v1 §7 "Batches").
 const int defaultBatchBytes = 2 * 1024 * 1024 * 1024;
 
-const List<String> categoryIds = ['contacts', 'photos', 'videos', 'audio', 'documents', 'calendar'];
+const List<String> categoryIds = ['contacts', 'photos', 'videos', 'audio', 'documents', 'calendar', 'apps'];
 const List<String> platformIds = ['android', 'ios', 'desktop_reference'];

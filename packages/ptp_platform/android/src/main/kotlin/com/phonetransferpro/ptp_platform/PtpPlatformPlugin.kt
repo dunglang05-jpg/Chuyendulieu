@@ -42,6 +42,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     private lateinit var usbTransport: UsbTransport
     private lateinit var vault: SecureVault
     private lateinit var hotspot: Hotspot
+    private lateinit var apps: AppsAdapter
 
     private var pendingPermission: Pair<Int, MethodChannel.Result>? = null
     private var pendingPermissionCategory: String? = null
@@ -55,6 +56,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         contacts = ContactsAdapter(context)
         usbTransport = UsbTransport(context)
         hotspot = Hotspot(context)
+        apps = AppsAdapter(context)
         channel = MethodChannel(b.binaryMessenger, "com.phonetransferpro/ptp_platform")
         channel.setMethodCallHandler(this)
     }
@@ -106,12 +108,17 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
             "scan" -> io(result) {
                 val cat = call.argument<String>("category")!!
                 val limit = call.argument<Int>("limit") ?: 100000
-                if (cat == "contacts") contacts.scan() else media.scan(cat, limit)
+                when (cat) {
+                    "contacts" -> contacts.scan()
+                    "apps" -> apps.scan()
+                    else -> media.scan(cat, limit)
+                }
             }
             "pickDocuments" -> pickDocuments(call.argument<String>("category") ?: "documents", result)
             "openForRead" -> io(result) {
                 val id = call.argument<String>("id")!!
                 if (id == ContactsAdapter.ALL_CONTACTS_ID) media.openFile(contacts.exportAll(File(context.cacheDir, "export")))
+                else if (id.startsWith(AppsAdapter.PREFIX)) media.openFile(apps.pack(id, File(context.cacheDir, "stage")), deleteOnClose = true)
                 else media.openForRead(Uri.parse(id))
             }
             "closeRead" -> io(result) { media.closeRead(call.argument<String>("token")!!); null }
@@ -122,7 +129,20 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 val cat = call.argument<String>("category")!!
                 val name = call.argument<String>("name")!!
                 val mime = call.argument<String>("mime")
-                if (cat == "contacts") contacts.importViaSystemApp(activity, File(path)) else media.importFile(File(path), cat, name, mime)
+                when (cat) {
+                    "contacts" -> contacts.importViaSystemApp(activity, File(path))
+                    // One system "Install?" dialog per app; waits for the user's answer (NOT TESTED ON DEVICES).
+                    "apps" -> apps.install(activity, File(path)) { intent, code ->
+                        withContext(Dispatchers.Main) {
+                            val act = activity
+                            if (act == null) false else {
+                                act.startActivityForResult(intent, code)
+                                true
+                            }
+                        }
+                    }
+                    else -> media.importFile(File(path), cat, name, mime)
+                }
             }
             // Receive straight into MediaStore (audit P1-7). NOT TESTED ON DEVICES.
             "mediaCreate" -> io(result) {
@@ -245,6 +265,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
             return if (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)) "granted" else "denied"
         }
         if (cat == "contacts") return if (granted(Manifest.permission.READ_CONTACTS)) "granted" else "denied"
+        if (cat == "apps") return "granted" // APK files of installed apps need no runtime permission
         if (cat == "nearbyWifi") return if (nearbyWifiPermissions().all { granted(it) }) "granted" else "denied"
         val perms = mediaPermissions(cat)
         if (perms.isEmpty()) return "not_applicable"
@@ -254,16 +275,16 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     }
 
     private fun probe(): Map<String, Any?> {
-        val cats = listOf("photos", "videos", "audio", "documents", "contacts", "calendar")
+        val cats = listOf("photos", "videos", "audio", "documents", "contacts", "calendar", "apps")
         val perms = cats.associateWith { permissionState(it) }
         fun exportStatus(c: String) = when (c) {
             "calendar" -> "unsupported"
-            "documents" -> "supported"
+            "documents", "apps" -> "supported"
             else -> if (perms[c] == "granted") "supported" else if (perms[c] == "limited") "partial" else "permission_required"
         }
         fun importStatus(c: String) = when (c) {
             "calendar" -> "unsupported"
-            "contacts" -> "official_flow"
+            "contacts", "apps" -> "official_flow" // system install dialog per app
             else -> "supported" // writing into our own MediaStore entries needs no permission on API 29+
         }
         val categories = cats.map {
@@ -290,6 +311,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         val perms = when (cat) {
             "notifications" -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
             "nearbyWifi" -> nearbyWifiPermissions()
+            "apps" -> emptyList()
             "contacts" -> if (forImport) emptyList() else listOf(Manifest.permission.READ_CONTACTS)
             else -> mediaPermissions(cat).toMutableList().apply {
                 if (Build.VERSION.SDK_INT >= 34 && cat != "audio") add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
@@ -326,6 +348,10 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode == AppsAdapter.INSTALL_PERMISSION_CODE) {
+            apps.onInstallPermissionResult()
+            return true
+        }
         if (requestCode != PICK_CODE) return false
         val result = pendingPick ?: return true
         pendingPick = null
