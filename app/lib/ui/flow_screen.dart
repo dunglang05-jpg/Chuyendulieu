@@ -358,6 +358,14 @@ class _UsbStatus extends StatelessWidget {
         Flexible(child: Text(S.t('usb_state_$state'))),
       ]),
       if (role.isNotEmpty) Text(role, style: Theme.of(context).textTheme.bodySmall),
+      if (c.usbNoHostHint) ...[
+        const SizedBox(height: 12),
+        ClayNote(text: S.t('usb_no_host'), icon: Icons.cable_rounded),
+      ],
+      if (c.usbSeen == 'not_android') ...[
+        const SizedBox(height: 12),
+        ClayNote(text: S.t('usb_not_android'), icon: Icons.cable_rounded),
+      ],
       if (state == 'failed' && c.usbError != null)
         Text(usbReason(c.usbError!), textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
     ]);

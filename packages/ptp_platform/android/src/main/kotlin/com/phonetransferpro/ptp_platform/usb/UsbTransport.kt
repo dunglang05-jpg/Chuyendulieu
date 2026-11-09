@@ -59,6 +59,15 @@ class UsbTransport(private val context: Context) {
     @Volatile var bridge: UsbBridge? = null
         private set
     @Volatile private var stopRequested = false
+
+    /**
+     * What the USB stack showed last (diagnostics, device test 2026-11-09 "no permission dialog"):
+     * none = this phone sees no USB device and is not an accessory (neither phone became USB host),
+     * device = a USB device is attached (we are host), not_android = it did not answer the AOA request,
+     * accessory = the peer switched us into accessory mode.
+     */
+    @Volatile var seen: String = "none"
+        private set
     private var worker: Thread? = null
 
     val hostSupported: Boolean get() = context.packageManager.hasSystemFeature(PackageManager.FEATURE_USB_HOST)
@@ -72,6 +81,8 @@ class UsbTransport(private val context: Context) {
         "role" to role,
         "error" to error,
         "bridgePort" to bridge?.listenPort?.takeIf { it > 0 },
+        "seen" to seen,
+        "devices" to (try { usb.deviceList.size } catch (_: Exception) { -1 }),
     )
 
     /**
@@ -83,6 +94,7 @@ class UsbTransport(private val context: Context) {
     fun start(mode: String, port: Int, timeoutMs: Long = 90_000) {
         stop()
         stopRequested = false
+        seen = "none"
         error = null
         role = null
         state = "waiting"
@@ -131,6 +143,7 @@ class UsbTransport(private val context: Context) {
             // 1) We are the accessory: the peer already switched us.
             val acc = usb.accessoryList?.firstOrNull()
             if (acc != null) {
+                seen = "accessory"
                 if (acc.manufacturer != MANUFACTURER || acc.model != MODEL) throw IOException("UNKNOWN_ACCESSORY")
                 if (!usb.hasPermission(acc)) {
                     state = "permission"
@@ -141,6 +154,7 @@ class UsbTransport(private val context: Context) {
             }
             // 2) We are the host and the peer is already in accessory mode.
             val devices = usb.deviceList.values
+            if (devices.isNotEmpty() && seen == "none") seen = "device"
             val aoa = devices.firstOrNull { it.vendorId == GOOGLE_VID && it.productId in AOA_PIDS }
             if (aoa != null) {
                 if (!usb.hasPermission(aoa)) {
@@ -192,7 +206,10 @@ class UsbTransport(private val context: Context) {
         try {
             val ver = ByteArray(2)
             val n = c.controlTransfer(0xC0, AOA_GET_PROTOCOL, 0, 0, ver, 2, 1000)
-            if (n != 2 || (ver[0].toInt() or (ver[1].toInt() shl 8)) < 1) return // not an Android device
+            if (n != 2 || (ver[0].toInt() or (ver[1].toInt() shl 8)) < 1) {
+                seen = "not_android" // e.g. a USB stick / hub, or a phone that refuses accessory mode
+                return
+            }
             val strings = listOf(MANUFACTURER, MODEL, DESCRIPTION, VERSION, URI, SERIAL)
             for ((i, s) in strings.withIndex()) {
                 val bytes = (s + "\u0000").toByteArray(Charsets.UTF_8)

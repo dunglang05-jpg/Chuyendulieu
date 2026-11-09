@@ -66,3 +66,18 @@ Vẫn **không** chứng minh tốc độ cáp hay phần cứng USB.
 `ngày | máy gửi (hãng/model/Android) | máy nhận | cáp | máy nào làm USB host | số file / tổng MB | thời gian | MB/s app hiển thị | SHA-256 khớp? | rút cáp → tiếp tục? | hủy OK? | lỗi (nếu có) | file log`
 
 Một chiều chỉ được đánh dấu **SUPPORTED** khi có dòng PASS cho: kết nối, xác thực, truyền thật, SHA-256 khớp, hủy, rút cáp không hỏng dữ liệu, Wi-Fi vẫn hoạt động — trên ít nhất 2 cặp máy khác hãng.
+
+## 2026-11-09 — device report: "cable mode does not work, no USB permission dialog"
+
+Reported on a real phone (Xiaomi 2406APNFAG, Android 16). No cable log was captured.
+
+**Analysis (from the code, not measured):**
+- The USB permission dialog only appears after this phone's `UsbManager` reports a `UsbDevice`, which happens only when this phone is the USB **host**, or a `UsbAccessory`, which happens only after the peer, acting as host, switched us into accessory mode.
+- With two phones, USB-C role negotiation usually leaves **both phones as device/sink** unless one of them has OTG enabled or "USB controlled by: This device" selected. In that case neither phone sees anything, `establish()` keeps polling in state `waiting`, and no dialog ever appears. This matches the report.
+- Other causes that give the same symptom: a charge-only cable, or a locked screen.
+
+**Change:**
+- `usbStatus` now reports `seen` (`none | device | not_android | accessory`) and the device count. The diagnostic log records them with each state change (`usb … status=none count=0`).
+- After 8 s of `waiting` with `seen=none`, the UI shows how to make one phone the USB host: the OTG toggle on OPPO/realme/OnePlus, "USB controlled by → This device", a data cable, and flipping the cable ends.
+
+**Still to verify on devices:** whether the switch to AOA works once one phone is host. The next cable log will show it: `seen=device`, then `switching`, `permission`, `connected`.

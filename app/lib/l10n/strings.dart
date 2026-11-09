@@ -151,6 +151,22 @@ class S {
       'vi': 'Chỉ Android ↔ Android. Nối hai máy bằng cáp USB-C có truyền dữ liệu, mở khóa cả hai máy, mở ứng dụng ở cả hai và chọn Chỉ cáp. Vẫn cần quét mã QR để xác thực. Ở chế độ này ứng dụng không dùng Wi-Fi.',
       'en': 'Android ↔ Android only. Connect with a USB-C data cable, unlock both phones, open the app on both and choose Cable only. The QR scan is still required. Wi-Fi is not used in this mode.'
     },
+    'usb_no_host': {
+      'vi': 'Máy này chưa thấy máy kia qua cáp. Khi nối hai điện thoại, phải có MỘT máy làm “máy chủ USB”:\n'
+          '• OPPO/realme/OnePlus: Cài đặt › Cài đặt bổ sung › bật “Kết nối OTG” (tự tắt sau ~10 phút).\n'
+          '• Kéo thanh thông báo, chạm thông báo USB › “USB được điều khiển bởi” › chọn “Thiết bị này” trên một máy.\n'
+          '• Dùng cáp USB-C ↔ USB-C có truyền dữ liệu (cáp chỉ sạc sẽ không được), mở khóa cả hai máy.\n'
+          'Nếu vẫn không được: rút cáp, đảo đầu cáp rồi cắm lại.',
+      'en': 'This phone does not see the other one over the cable. With two phones, ONE must act as “USB host”:\n'
+          '• OPPO/realme/OnePlus: Settings › Additional settings › turn on “OTG connection” (turns off after ~10 min).\n'
+          '• Pull down notifications, tap the USB notification › “USB controlled by” › “This device” on one phone.\n'
+          '• Use a USB-C ↔ USB-C DATA cable (charge-only cables will not work) and unlock both phones.\n'
+          'Still nothing: unplug, flip the cable ends and plug in again.'
+    },
+    'usb_not_android': {
+      'vi': 'Thiết bị cắm vào không trả lời như điện thoại Android (có thể là hub, USB, hoặc máy kia chặn chế độ phụ kiện).',
+      'en': 'The attached device did not answer like an Android phone (hub, USB stick, or accessory mode blocked).'
+    },
     'usb_ios_unsupported': {
       'vi': 'iPhone không cho ứng dụng dùng cổng USB để truyền dữ liệu, nên chỉ có chế độ Wi-Fi.',
       'en': 'iPhone does not let apps use the USB port for data, so only Wi-Fi is available.'

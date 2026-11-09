@@ -129,6 +129,10 @@ class MigrationController extends ChangeNotifier {
   /// Unfinished transfers found on this phone (shown on the home screen). No keys in here are shown.
   List<ContinuationRecord> pendingContinuations = const [];
   String? usbState;
+
+  /// What this phone's USB stack sees while waiting for the cable: none | device | not_android | accessory.
+  String? usbSeen;
+  DateTime? _usbWaitSince;
   String? usbRole;
   String? usbError;
   Timer? _usbPoll;
@@ -576,6 +580,13 @@ class MigrationController extends ChangeNotifier {
   /// Starts the native USB bridge and keeps polling it. With [waitConnected], returns the local bridge port once the
   /// cable link is up (joiner). If the cable drops after pairing, the bridge is restarted on the same port so the
   /// worker's normal resume logic reconnects through it.
+  /// Waiting > 8 s with no USB device and no accessory: neither phone became USB host (no OTG / role not set).
+  bool get usbNoHostHint {
+    final since = _usbWaitSince;
+    return usbState == 'waiting' && (usbSeen ?? 'none') == 'none' && since != null &&
+        DateTime.now().difference(since) > const Duration(seconds: 8);
+  }
+
   Future<int> _startUsb(String mode, int port, {bool waitConnected = false, int timeoutMs = 90000}) async {
     _usbMode = mode;
     _usbPort = port;
@@ -594,10 +605,19 @@ class MigrationController extends ChangeNotifier {
       usbState = st['state'] as String?;
       usbRole = st['role'] as String?;
       usbError = st['error'] as String?;
-      if (usbState != lastState) {
+      final seen = st['seen'] as String?;
+      if (usbState == 'waiting') {
+        _usbWaitSince ??= DateTime.now();
+      } else {
+        _usbWaitSince = null;
+      }
+      if (usbState != lastState || seen != usbSeen) {
         lastState = usbState ?? '';
-        _log.event('usb', {'state': usbState, 'role': usbRole, 'code': usbError});
+        usbSeen = seen;
+        _log.event('usb', {'state': usbState, 'role': usbRole, 'code': usbError, 'status': seen, 'count': st['devices']});
         notifyListeners();
+      } else if (usbNoHostHint) {
+        notifyListeners(); // the hint appears after a while without anything new from the USB stack
       }
       final bp = st['bridgePort'];
       if (usbState == 'connected') {
@@ -1342,6 +1362,8 @@ class MigrationController extends ChangeNotifier {
     slowWifiMbps = null;
     _policy.reset();
     usbState = null;
+    usbSeen = null;
+    _usbWaitSince = null;
     usbRole = null;
     usbError = null;
     progress
