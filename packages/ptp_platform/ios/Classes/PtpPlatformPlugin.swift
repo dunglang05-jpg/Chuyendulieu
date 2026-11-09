@@ -127,12 +127,14 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
         DispatchQueue.main.async {
           var code: String? = nil
           if let error = error {
-            if let ne = error as? NEHotspotConfigurationError {
-              switch ne.code {
-              case .alreadyAssociated: code = nil
-              case .userDenied: code = "HOTSPOT_JOIN_DENIED"
-              default: code = "HOTSPOT_JOIN_FAILED"
-              }
+            let ns = error as NSError
+            // NEHotspotConfigurationError is a plain Int enum; errors arrive as NSError in its domain.
+            if ns.domain == "NEHotspotConfigurationErrorDomain"
+                && ns.code == NEHotspotConfigurationError.alreadyAssociated.rawValue {
+              code = nil
+            } else if ns.domain == "NEHotspotConfigurationErrorDomain"
+                && ns.code == NEHotspotConfigurationError.userDenied.rawValue {
+              code = "HOTSPOT_JOIN_DENIED"
             } else {
               code = "HOTSPOT_JOIN_FAILED"
             }
