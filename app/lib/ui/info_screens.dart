@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../app/controller.dart';
 import '../core/domain/categories.dart';
 import '../data/db.dart';
 import '../l10n/strings.dart';
 import 'clay.dart';
+import 'flow_screen.dart' show exportLogButton;
 
 String statusLabel(SupportStatus s) => switch (s) {
       SupportStatus.supported => 'Hỗ trợ',
@@ -142,8 +144,11 @@ Color _stateColor(Object? s) => switch (s) {
     };
 
 class HistoryScreen extends StatelessWidget {
-  const HistoryScreen({super.key, required this.db});
+  const HistoryScreen({super.key, required this.db, this.controller});
   final AppDatabase db;
+
+  /// When given, the screen offers "Xuất log chẩn đoán" (device test: users looked for it here).
+  final MigrationController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -154,20 +159,23 @@ class HistoryScreen extends StatelessWidget {
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
           final rows = snap.data ?? const [];
+          final c = controller;
           if (rows.isEmpty) {
             return Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const ClayBlob(icon: Icons.history_rounded, size: 72, pressed: true),
                 const SizedBox(height: 16),
                 Text(S.t('history_empty'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Clay.sub)),
+                if (c != null) ...[const SizedBox(height: 16), exportLogButton(context, c)],
               ]),
             );
           }
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-            itemCount: rows.length,
+            itemCount: rows.length + (c == null ? 0 : 1),
             separatorBuilder: (_, __) => const SizedBox(height: 14),
             itemBuilder: (_, i) {
+              if (i == rows.length) return Center(child: exportLogButton(context, c!));
               final r = rows[i];
               final when = DateTime.fromMillisecondsSinceEpoch(r['started_at'] as int);
               final mb = ((r['bytes'] as int? ?? 0) / 1e6).toStringAsFixed(1);

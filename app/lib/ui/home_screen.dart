@@ -93,7 +93,7 @@ class HomeScreen extends StatelessWidget {
                   icon: Icons.history_rounded,
                   label: S.t('history'),
                   onTap: () => Navigator.of(context)
-                      .push(MaterialPageRoute<void>(builder: (_) => HistoryScreen(db: controller.db))),
+                      .push(MaterialPageRoute<void>(builder: (_) => HistoryScreen(db: controller.db, controller: controller))),
                 ),
               ),
             ]),

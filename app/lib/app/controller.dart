@@ -9,6 +9,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show max;
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -1125,7 +1126,9 @@ class MigrationController extends ChangeNotifier {
         ok: okCount,
         failed: failedCount,
         skipped: skippedCount,
-        bytes: reports.fold(0, (a, r) => a + r.wireBytes),
+        // Device test: a cancelled session showed 0.0 MB although ~200 MB had moved (only finished batches were
+        // counted). Count the bytes actually moved, finished batch or not.
+        bytes: max(reports.fold<int>(0, (a, r) => a + r.wireBytes), progress.doneBytes),
         durationMs: reports.fold(0, (a, r) => a + r.elapsed.inMilliseconds),
         categories: cats);
   }
