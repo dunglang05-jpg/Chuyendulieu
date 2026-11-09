@@ -13,6 +13,7 @@ import '../protocol/framing.dart';
 import '../protocol/manifest.dart';
 import '../protocol/paths.dart';
 import '../session/session.dart';
+import 'hash_service.dart';
 import 'receiver_store.dart';
 
 class SourceStat {
@@ -130,6 +131,7 @@ Future<TransferReport> runSender(
   ProgressCallback? onProgress,
   CancelToken? cancel,
   PauseGate? pause,
+  HashService? hashes,
 }) async {
   assert(ch.role == 'sender' && chunkSize >= 1 && chunkSize <= maxChunk);
   final entries = <FileEntry>[];
@@ -230,7 +232,7 @@ Future<TransferReport> runSender(
       results[i] = 'FILE_CHANGED';
       return;
     }
-    final hasher = StreamingSha256();
+    final hasher = hashes?.open(e.size) ?? InlineSha256();
     final raf = await src.open();
     var pos = start;
     try {
@@ -271,7 +273,10 @@ Future<TransferReport> runSender(
       results[i] = 'FILE_CHANGED';
       return;
     }
-    await ch.writer.control({'t': 'file_end', 'i': i, 'size': e.size, 'sha256': hasher.hexDigest()});
+    final th = report.timer('hash')..start();
+    final hex = await hasher.digest(); // off-isolate hashing: only this wait is on the transfer path
+    th.stop();
+    await ch.writer.control({'t': 'file_end', 'i': i, 'size': e.size, 'sha256': hex});
   }
 
   final todo = [for (final i in offsets.keys.toList()..sort()) if (!already.contains(i)) i];
@@ -429,7 +434,10 @@ Future<TransferReport> runReceiver(
               final sizeOk = expected[i] == manifest.files[i].size && msg['size'] == manifest.files[i].size;
               String status;
               String? dest;
-              if (sizeOk && digest is String && constantTimeEquals(part.hasher.hexDigest().codeUnits, digest.toLowerCase().codeUnits)) {
+              final thd = report.timer('hash')..start();
+              final mine = await part.hasher.digest();
+              thd.stop();
+              if (sizeOk && digest is String && constantTimeEquals(mine.codeUnits, digest.toLowerCase().codeUnits)) {
                 try {
                   final tc = report.timer('commit')..start();
                   try {

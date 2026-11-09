@@ -65,6 +65,10 @@ Socket TLS, phiên PTP/1, engine gửi/nhận và SHA-256 chạy trong **isolate
 
 Lý do: log thật ngày 2026-11-09 cho thấy máy nhận (realme RMX5268) chỉ kết nối router ở 54 Mbps nên lần chuyển bị giới hạn ~3,5 MB/s; app không phải điểm nghẽn. Chế độ mới: máy Android hiện QR tự phát Wi-Fi riêng (LocalOnlyHotspot), máy quét tự vào mạng đó (Android: WifiNetworkSpecifier; iPhone: NEHotspotConfiguration hoặc vào tay). iPhone không thể làm máy phát. Thêm cảnh báo "Wi-Fi chậm" khi liên kết router < 150 Mbps, và log `reconnect_start` nay ghi mã lỗi. Chi tiết, rủi ro và kế hoạch kiểm thử: `docs/HOTSPOT.md`. Chưa có số đo tốc độ.
 
+## Băm SHA-256 ngoài luồng truyền (2026-11-09)
+
+Log thật (Wi-Fi Direct 5 GHz, 3,96 GB, 7,8 MB/s): máy gửi mất 82 s, máy nhận 90 s để băm SHA-256 ngay trong isolate đang đẩy socket. Nay tệp ≥ 1 MiB được băm trong một isolate riêng (`HashService`), vòng truyền chỉ chờ mã cuối mỗi tệp; tệp nhỏ vẫn băm tại chỗ. Cách kiểm tra không đổi. Chưa đo lại trên máy thật — mốc `t_hash` trong log nay là thời gian *chờ* kết quả băm.
+
 ## Giới hạn đã biết (thiết kế, không phải lỗi)
 
 * iOS: ứng dụng phải ở foreground khi chuyển; iOS tạm dừng ứng dụng nền.

@@ -23,6 +23,7 @@ import '../session/continuation.dart';
 import '../session/identity.dart';
 import '../session/session.dart';
 import '../transfer/engine.dart';
+import '../transfer/hash_service.dart';
 import '../transfer/receiver_store.dart';
 
 /// A file prepared by the UI isolate (Android `/proc/self/fd/N`, iOS staged export, picked document).
@@ -114,6 +115,16 @@ class _Worker {
   CancelToken _cancel = CancelToken();
   final PauseGate _pause = PauseGate();
   ReceiverStore? _store;
+
+  /// SHA-256 for large files runs in its own isolate so this one keeps feeding the socket (device test 2026-11-09).
+  HashService? _hashes;
+  Future<HashService?> _hashService() async {
+    try {
+      return _hashes ??= await HashService.spawn();
+    } catch (_) {
+      return null; // inline hashing still works
+    }
+  }
 
   /// Audit P1-10: earlier unfinished transfers (with their keys) and the outcome of the continuation exchange.
   List<ContinuationRecord> _contCandidates = const [];
@@ -296,6 +307,7 @@ class _Worker {
             it['mtimeMs'] as int?, it['token'] as String?, (t) => _rpc('closeRead', {'token': t}))
     ];
     final rep = await runSender(_ch!, sources,
+        hashes: await _hashService(),
         transferId: a['transferId'] as String?,
         more: a['more'] == true,
         cancel: _cancel,
@@ -322,6 +334,7 @@ class _Worker {
         // Partial data from an earlier session is reused only for transfers both phones agreed to continue.
         resumeAllowed: (tid) => cont != null && cont.continued && cont.record.transferIds.contains(tid));
     final store = _store!;
+    store.hashes ??= await _hashService();
     while (true) {
       final rep = await runReceiver(_ch!, store,
           cancel: _cancel,
@@ -370,6 +383,8 @@ class _Worker {
   }
 
   Future<void> _close() async {
+    _hashes?.close();
+    _hashes = null;
     _cancel.cancel();
     try {
       await _ch?.close();

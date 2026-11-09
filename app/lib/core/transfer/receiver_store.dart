@@ -11,6 +11,7 @@ import '../protocol/errors.dart';
 import '../protocol/manifest.dart';
 import '../protocol/paths.dart';
 import '../session/continuation.dart' show macJson, checkMacJson;
+import 'hash_service.dart';
 
 /// Persistence for per-file resume state. JSON implementation below; the app uses SQLite (data/db.dart).
 abstract class CheckpointStore {
@@ -128,7 +129,7 @@ PtpException mapWriteError(FileSystemException e) {
 class OpenPart {
   OpenPart(this.raf, this.hasher, this.index);
   final RandomAccessFile raf;
-  final StreamingSha256 hasher;
+  final Sha256Sink hasher;
   final int index;
 }
 
@@ -139,7 +140,11 @@ class ReceiverStore {
       this.importCopies = false,
       this.onEvent,
       this.resumeAllowed,
-      this.verify = VerifyMode.size});
+      this.verify = VerifyMode.size,
+      this.hashes});
+
+  /// Optional off-isolate hashing for large files (device test 2026-11-09). Null: inline.
+  HashService? hashes;
 
   final String root; // app-private inbox; files the media sink cannot take are imported from here after commit
   final CheckpointStore checkpoints;
@@ -310,7 +315,7 @@ class ReceiverStore {
       raf = await File(partPath(i)).open(mode: FileMode.append);
     }
     await raf.truncate(offset);
-    final hasher = StreamingSha256();
+    final hasher = hashes?.open(manifest.files[i].size) ?? InlineSha256();
     await raf.setPosition(0);
     var remaining = offset;
     while (remaining > 0) {
