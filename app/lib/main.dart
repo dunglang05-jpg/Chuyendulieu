@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app/controller.dart';
 import 'data/db.dart';
 import 'l10n/strings.dart';
+import 'ui/clay.dart';
 import 'ui/home_screen.dart';
 
 Future<void> main() async {
@@ -20,8 +21,9 @@ class PhoneTransferApp extends StatelessWidget {
     return MaterialApp(
       title: S.t('app_title'),
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF0B6E4F), useMaterial3: true),
-      darkTheme: ThemeData(colorSchemeSeed: const Color(0xFF0B6E4F), brightness: Brightness.dark, useMaterial3: true),
+      // "Đất sét 3D" design (light only: the clay shadows are built for a light background).
+      theme: Clay.theme(),
+      themeMode: ThemeMode.light,
       home: HomeScreen(controller: controller),
     );
   }

@@ -12,6 +12,7 @@ import '../core/domain/state_machine.dart';
 import '../core/protocol/errors.dart';
 import '../core/transfer/path_policy.dart';
 import '../l10n/strings.dart';
+import 'clay.dart';
 import 'info_screens.dart';
 
 String fmtBytes(int b) {
@@ -20,6 +21,15 @@ String fmtBytes(int b) {
   if (b >= 1 << 10) return '${(b / (1 << 10)).toStringAsFixed(0)} KB';
   return '$b B';
 }
+
+IconData categoryIcon(String id) => switch (id) {
+      'photos' => Icons.image_outlined,
+      'videos' => Icons.videocam_outlined,
+      'contacts' => Icons.person_outline_rounded,
+      'documents' => Icons.description_outlined,
+      'audio' => Icons.music_note_outlined,
+      _ => Icons.folder_outlined,
+    };
 
 String errorText(PtpException e) => switch (e.code) {
       PtpErrorCode.pairingExpired => S.t('err_qr_expired'),
@@ -73,7 +83,7 @@ class _FlowScreenState extends State<FlowScreen> {
         body: SafeArea(
           child: AnimatedBuilder(
             animation: c,
-            builder: (context, _) => Padding(padding: const EdgeInsets.all(16), child: _body(context)),
+            builder: (context, _) => Padding(padding: const EdgeInsets.fromLTRB(24, 8, 24, 24), child: _body(context)),
           ),
         ),
       ),
@@ -144,32 +154,46 @@ class _ConnectChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     // Default: the new phone (receiver) shows the code, the old phone scans. Either way works.
     final showFirst = role == 'receiver';
-    final show = FilledButton.icon(onPressed: onShow, icon: const Icon(Icons.qr_code_2_rounded), label: Text(S.t('show_qr')));
-    final scan = OutlinedButton.icon(onPressed: onScan, icon: const Icon(Icons.qr_code_scanner_rounded), label: Text(S.t('scan_qr')));
-    return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final show = ClayPrimaryButton(onPressed: onShow, icon: Icons.qr_code_2_rounded, label: S.t('show_qr'));
+    final scan = ClayButton(onPressed: onScan, icon: Icons.qr_code_scanner_rounded, label: S.t('scan_qr'));
+    return ListView(children: [
+      ClayStep(S.t('step_connect')),
+      const SizedBox(height: 18),
       if (Platform.isAndroid) ...[
-        // Cable mode is offered on Android only: iPhone apps have no public USB API (docs/USB_C_OTG_RESEARCH.md).
         // Wi-Fi stays the default; both cable modes are experimental until real-device tests pass.
-        SegmentedButton<String>(
-          segments: [
-            ButtonSegment(value: 'wifi', icon: const Icon(Icons.wifi_rounded), label: Text(S.t('transport_wifi'))),
-            ButtonSegment(value: 'auto', icon: const Icon(Icons.swap_horiz_rounded), label: Text(S.t('transport_auto'))),
-            ButtonSegment(value: 'usb', icon: const Icon(Icons.usb_rounded), label: Text(S.t('transport_usb'))),
+        // Cable modes are Android only: iPhone apps have no public USB API (docs/USB_C_OTG_RESEARCH.md).
+        ClaySegmented<String>(
+          options: [
+            ('wifi', Icons.wifi_rounded, S.t('transport_wifi')),
+            ('auto', Icons.swap_horiz_rounded, S.t('transport_auto')),
+            ('usb', Icons.usb_rounded, S.t('transport_usb')),
           ],
-          selected: {mode},
-          onSelectionChanged: (s) => onTransport(s.first),
+          value: mode,
+          onChanged: onTransport,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
       ],
-      Text(switch (mode) { 'usb' => S.t('usb_hint'), 'auto' => S.t('auto_hint'), _ => S.t('same_wifi') },
-          textAlign: TextAlign.center),
+      ClaySurface(
+        radius: 26,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ClayBlob(
+              icon: switch (mode) { 'usb' => Icons.usb_rounded, 'auto' => Icons.swap_horiz_rounded, _ => Icons.wifi_rounded },
+              size: 44,
+              pressed: true),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(switch (mode) { 'usb' => S.t('usb_hint'), 'auto' => S.t('auto_hint'), _ => S.t('same_wifi') },
+                style: const TextStyle(fontSize: 14, height: 1.45, fontWeight: FontWeight.w600, color: Clay.sub)),
+          ),
+        ]),
+      ),
       if (!Platform.isAndroid) ...[
-        const SizedBox(height: 8),
-        Text(S.t('usb_ios_unsupported'), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 10),
+        Text(S.t('usb_ios_unsupported'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Clay.sub)),
       ],
       const SizedBox(height: 32),
       showFirst ? show : scan,
-      const SizedBox(height: 12),
+      const SizedBox(height: 18),
       showFirst ? scan : show,
     ]);
   }
@@ -202,23 +226,46 @@ class _QrViewState extends State<_QrView> {
     final left = widget.c.qrExpires?.difference(DateTime.now()).inSeconds ?? 0;
     final eps = widget.c.qrEndpoints;
     final loopbackOnly = eps.isNotEmpty && eps.every((e) => e.startsWith('127.'));
-    return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Text(S.t('qr_hint'), textAlign: TextAlign.center),
-      const SizedBox(height: 16),
-      Container(
-        color: Colors.white,
-        padding: const EdgeInsets.all(12),
-        child: QrImageView(data: widget.c.qrUri!, size: 260, semanticsLabel: 'QR'),
+    return ListView(children: [
+      ClayStep(S.t('step_connect')),
+      const SizedBox(height: 18),
+      ClaySurface(
+        radius: 34,
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+        child: Column(children: [
+          Text(S.t('qr_hint'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Clay.sub)),
+          const SizedBox(height: 18),
+          ClayInset(
+            color: Colors.white,
+            radius: 26,
+            padding: const EdgeInsets.all(16),
+            child: QrImageView(
+              data: widget.c.qrUri!,
+              size: 220,
+              semanticsLabel: 'QR',
+              eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Clay.fg),
+              dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Clay.fg),
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (left > 0) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(S.t('qr_expires', {'s': left}),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Clay.sub)),
+            ),
+            const SizedBox(height: 8),
+            ClayProgressBar(value: left / 300, height: 12),
+          ] else
+            ClayPrimaryButton(onPressed: () => widget.c.showQr(widget.role), label: S.t('qr_new'), icon: Icons.refresh_rounded),
+        ]),
       ),
-      const SizedBox(height: 12),
-      if (left > 0)
-        Text(S.t('qr_expires', {'s': left}))
-      else
-        FilledButton(onPressed: () => widget.c.showQr(widget.role), child: Text(S.t('qr_new'))),
-      if (widget.c.transport == 'usb') ...[const SizedBox(height: 12), _UsbStatus(c: widget.c)],
+      if (widget.c.transport == 'usb') ...[const SizedBox(height: 16), _UsbStatus(c: widget.c)],
       if (loopbackOnly && widget.c.transport != 'usb') ...[
-        const SizedBox(height: 12),
-        Text(S.t('no_wifi_ip'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        const SizedBox(height: 16),
+        ClayNote(text: S.t('no_wifi_ip'), icon: Icons.wifi_off_rounded),
       ],
     ]);
   }
@@ -323,22 +370,73 @@ class _ConfirmView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final peer = c.pendingPeer!;
-    return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(S.t('confirm_title'), style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
-      const SizedBox(height: 16),
-      Text(S.t('confirm_body', {'name': peer.name, 'platform': peer.platform == 'ios' ? 'iPhone' : 'Android'}),
-          textAlign: TextAlign.center),
-      const SizedBox(height: 24),
-      Text(
-        '${c.pendingSas!.substring(0, 3)} ${c.pendingSas!.substring(3)}',
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.displayMedium?.copyWith(letterSpacing: 6, fontFeatures: const [FontFeature.tabularFigures()]),
-        semanticsLabel: c.pendingSas!.split('').join(' '),
+    final sas = c.pendingSas!;
+    final platform = peer.platform == 'ios' ? 'iPhone' : 'Android';
+    Widget digit(String d) => SizedBox(
+          width: 44,
+          height: 58,
+          child: ClayInset(
+            radius: 16,
+            depth: 5,
+            padding: EdgeInsets.zero,
+            child: Center(
+              child: Text(d,
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+            ),
+          ),
+        );
+    return ListView(children: [
+      ClayStep(S.t('step_confirm')),
+      const SizedBox(height: 22),
+      const Center(child: ClayBlob(icon: Icons.verified_user_outlined, size: 92, filled: true)),
+      const SizedBox(height: 18),
+      Text(S.t('confirm_body', {'name': peer.name, 'platform': platform}),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 15, height: 1.45, fontWeight: FontWeight.w600, color: Clay.sub)),
+      const SizedBox(height: 20),
+      ClaySurface(
+        radius: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        child: Row(children: [
+          const ClayBlob(icon: Icons.smartphone_rounded, size: 46, pressed: true),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(peer.name,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(platform, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Clay.sub)),
+            ]),
+          ),
+        ]),
       ),
-      const SizedBox(height: 32),
-      FilledButton(onPressed: () => c.answerConfirm(true), child: Text(S.t('accept'))),
-      const SizedBox(height: 8),
-      OutlinedButton(onPressed: () => c.answerConfirm(false), child: Text(S.t('reject'))),
+      const SizedBox(height: 20),
+      ClaySurface(
+        radius: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 20),
+        child: Column(children: [
+          Text(S.t('confirm_code'),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Clay.sub, letterSpacing: 1)),
+          const SizedBox(height: 12),
+          Semantics(
+            label: sas.split('').join(' '),
+            excludeSemantics: true,
+            child: FittedBox(
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                for (var i = 0; i < sas.length; i++) ...[
+                  if (i == 3) const SizedBox(width: 12) else if (i > 0) const SizedBox(width: 6),
+                  digit(sas[i]),
+                ],
+              ]),
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 20),
+      ClayNote(text: S.t('confirm_warn'), icon: Icons.warning_amber_rounded),
+      const SizedBox(height: 26),
+      ClayPrimaryButton(onPressed: () => c.answerConfirm(true), icon: Icons.check_rounded, label: S.t('accept_same')),
+      const SizedBox(height: 16),
+      ClayButton(onPressed: () => c.answerConfirm(false), label: S.t('reject_diff'), color: Clay.danger),
     ]);
   }
 }
@@ -351,18 +449,31 @@ class _SelectView extends StatelessWidget {
   Widget build(BuildContext context) {
     final peerPf = c.peer?.platform ?? '';
     final myPf = c.probe?.platform ?? (Platform.isIOS ? 'ios' : 'android');
+    final total = c.selection.values.fold<int>(0, (a, l) => a + l.fold<int>(0, (b, i) => b + i.sizeHint));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(S.t('choose_data'), style: Theme.of(context).textTheme.titleLarge),
+      ClayStep(S.t('step_select', {'name': c.peer?.name ?? ''})),
       const SizedBox(height: 8),
       Expanded(
-        child: ListView(children: [
-          for (final cat in categoryRegistry) _categoryTile(context, cat, myPf, peerPf),
+        child: ListView(padding: const EdgeInsets.symmetric(vertical: 10), children: [
+          for (final cat in categoryRegistry) ...[_categoryTile(context, cat, myPf, peerPf), const SizedBox(height: 14)],
+          if (Platform.isIOS) Text(S.t('keep_open_ios'), style: const TextStyle(fontSize: 12, color: Clay.sub)),
         ]),
       ),
-      if (Platform.isIOS) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(S.t('keep_open_ios'), style: Theme.of(context).textTheme.bodySmall)),
-      FilledButton(
-        onPressed: c.selectedCount == 0 ? null : c.startSending,
-        child: Text('${S.t('start')} · ${S.t('items', {'n': c.selectedCount})}'),
+      const SizedBox(height: 8),
+      ClaySurface(
+        radius: 30,
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+              child: Text(S.t('items', {'n': c.selectedCount}),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Clay.sub)),
+            ),
+            if (total > 0) Text(fmtBytes(total), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 12),
+          ClayPrimaryButton(onPressed: c.selectedCount == 0 ? null : c.startSending, label: S.t('start'), height: 56),
+        ]),
       ),
     ]);
   }
@@ -371,12 +482,15 @@ class _SelectView extends StatelessWidget {
     final inPlan = c.plan.contains(cat.id);
     final items = c.selection[cat.id];
     final perm = c.permission[cat.id];
+    final selected = items != null && items.isNotEmpty;
     final note = '${cat.forPlatform(myPf).note}\n→ ${cat.forPlatform(peerPf).note}';
     String subtitle;
+    var subColor = Clay.sub;
     if (!inPlan) {
       subtitle = S.t('not_in_plan');
     } else if (perm == 'denied') {
       subtitle = S.t('perm_denied');
+      subColor = Clay.warn;
     } else if (items != null) {
       final size = items.fold<int>(0, (a, i) => a + i.sizeHint);
       subtitle = '${S.t('items', {'n': items.length})}${size > 0 ? ' · ${fmtBytes(size)}' : ''}'
@@ -384,38 +498,66 @@ class _SelectView extends StatelessWidget {
     } else {
       subtitle = statusLabel(cat.forPlatform(myPf).export);
     }
-    return Card(
-      child: ListTile(
-        enabled: inPlan,
-        title: Text(cat.titleVi),
-        subtitle: Text(subtitle),
-        isThreeLine: false,
-        leading: Checkbox(
-          value: items != null && items.isNotEmpty,
-          onChanged: !inPlan
-              ? null
-              : (v) {
-                  if (v == true) {
-                    c.selectCategory(cat.id);
-                  } else {
-                    c.clearCategory(cat.id);
-                  }
-                },
-        ),
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+    void toggle() {
+      if (!inPlan) return;
+      if (selected) {
+        c.clearCategory(cat.id);
+      } else {
+        c.selectCategory(cat.id);
+      }
+    }
+
+    return Opacity(
+      opacity: inPlan ? 1 : 0.5,
+      child: ClaySurface(
+        radius: 24,
+        depth: 6,
+        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+        onTap: inPlan ? toggle : null,
+        child: Row(children: [
+          ClayBlob(icon: categoryIcon(cat.id), size: 44, pressed: true),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(cat.titleVi, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              Text(subtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: subColor)),
+            ]),
+          ),
           if (perm == 'denied') ...[
             TextButton(onPressed: () => c.selectCategory(cat.id), child: Text(S.t('grant'))),
             // P1-6: after a permanent denial the OS no longer shows the prompt; Settings is the only way back.
             IconButton(
               tooltip: S.t('open_settings'),
-              icon: const Icon(Icons.settings_rounded),
+              icon: const Icon(Icons.settings_rounded, color: Clay.sub),
               onPressed: PtpPlatform.openAppSettings,
             ),
           ],
           IconButton(
-            icon: const Icon(Icons.info_outline_rounded),
+            tooltip: cat.titleVi,
+            icon: const Icon(Icons.info_outline_rounded, color: Clay.sub),
             onPressed: () => showDialog<void>(
-                context: context, builder: (_) => AlertDialog(title: Text(cat.titleVi), content: Text(note))),
+                context: context,
+                builder: (_) => AlertDialog(backgroundColor: Clay.bg, title: Text(cat.titleVi), content: Text(note))),
+          ),
+          Semantics(
+            checked: selected,
+            enabled: inPlan,
+            label: cat.titleVi,
+            child: GestureDetector(
+              onTap: inPlan ? toggle : null,
+              child: Container(
+                width: 32,
+                height: 32,
+                margin: const EdgeInsets.only(right: 6),
+                child: selected
+                    ? Container(
+                        decoration: BoxDecoration(
+                            gradient: Clay.gradient, borderRadius: BorderRadius.circular(12), boxShadow: Clay.raised(3)),
+                        child: const Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                      )
+                    : const ClayInset(radius: 12, depth: 3, padding: EdgeInsets.zero, child: SizedBox.expand()),
+              ),
+            ),
           ),
         ]),
       ),
@@ -433,16 +575,37 @@ class _ApproveView extends StatelessWidget {
     for (final f in m.files) {
       byCat[f.category] = (byCat[f.category] ?? 0) + 1;
     }
-    return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(S.t('approve_title'), style: Theme.of(context).textTheme.headlineSmall),
+    return ListView(children: [
       const SizedBox(height: 12),
-      Text(S.t('approve_body', {'n': m.files.length, 'size': fmtBytes(c.pendingNeeded)})),
+      const Center(child: ClayBlob(icon: Icons.move_to_inbox_rounded, size: 84, filled: true)),
+      const SizedBox(height: 18),
+      Text(S.t('approve_title'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
-      for (final e in byCat.entries)
-        Text('• ${categoryRegistry.firstWhere((x) => x.id == e.key).titleVi}: ${e.value}'),
-      const SizedBox(height: 24),
-      FilledButton(onPressed: () => c.answerApprove(true), child: Text(S.t('accept'))),
-      OutlinedButton(onPressed: () => c.answerApprove(false), child: Text(S.t('reject'))),
+      Text(S.t('approve_body', {'n': m.files.length, 'size': fmtBytes(c.pendingNeeded)}),
+          textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Clay.sub)),
+      const SizedBox(height: 20),
+      ClaySurface(
+        radius: 26,
+        child: Column(children: [
+          for (final e in byCat.entries)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                Icon(categoryIcon(e.key), color: Clay.accent, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(categoryRegistry.firstWhere((x) => x.id == e.key).titleVi,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+                Text('${e.value}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Clay.sub)),
+              ]),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 28),
+      ClayPrimaryButton(onPressed: () => c.answerApprove(true), icon: Icons.check_rounded, label: S.t('accept')),
+      const SizedBox(height: 16),
+      ClayButton(onPressed: () => c.answerApprove(false), label: S.t('reject'), color: Clay.danger),
     ]);
   }
 }
@@ -450,34 +613,95 @@ class _ApproveView extends StatelessWidget {
 class _TransferView extends StatelessWidget {
   const _TransferView({required this.c});
   final MigrationController c;
+
+  /// Time left from the measured speed only; null when there is no measurement yet.
+  String? _eta() {
+    final pr = c.progress;
+    if (pr.mbps <= 0 || pr.totalBytes <= 0) return null;
+    final secs = (pr.totalBytes - pr.doneBytes) / (pr.mbps * 1e6);
+    if (secs.isNaN || secs.isInfinite || secs < 0) return null;
+    if (secs < 60) return '${secs.ceil()} s';
+    if (secs < 3600) return '${(secs / 60).ceil()} min';
+    return '${(secs / 3600).toStringAsFixed(1)} h';
+  }
+
   @override
   Widget build(BuildContext context) {
     final pr = c.progress;
     final frac = pr.totalBytes > 0 ? (pr.doneBytes / pr.totalBytes).clamp(0.0, 1.0) : null;
-    final tt = Theme.of(context).textTheme;
-    return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(c.state == MigrationState.importing ? S.t('importing') : S.t('transferring'), style: tt.headlineSmall),
-      const SizedBox(height: 16),
-      LinearProgressIndicator(value: frac, minHeight: 10, borderRadius: BorderRadius.circular(5)),
-      const SizedBox(height: 8),
-      Text('${fmtBytes(pr.doneBytes)} / ${pr.totalBytes > 0 ? fmtBytes(pr.totalBytes) : '…'}'),
-      if (pr.mbps > 0) Text(S.t('speed', {'mbps': pr.mbps.toStringAsFixed(1)})),
-      const SizedBox(height: 8),
-      Text(pr.current, maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall),
-      if (c.transport != 'wifi') ...[const SizedBox(height: 16), _PathInfo(c: c)],
+    final eta = _eta();
+    Widget stat(String label, String value) => Expanded(
+          child: ClayInset(
+            radius: 22,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Clay.sub)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+            ]),
+          ),
+        );
+    return ListView(children: [
+      ClayStep(c.state == MigrationState.importing ? S.t('importing') : S.t('step_transfer')),
+      const SizedBox(height: 18),
+      ClaySurface(
+        radius: 36,
+        padding: const EdgeInsets.fromLTRB(18, 24, 18, 20),
+        child: Column(children: [
+          ClayRing(
+            value: frac,
+            center: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(frac == null ? '…' : '${(frac * 100).floor()}%',
+                  style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+              Text('${fmtBytes(pr.doneBytes)} / ${pr.totalBytes > 0 ? fmtBytes(pr.totalBytes) : '…'}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Clay.sub)),
+            ]),
+          ),
+          const SizedBox(height: 14),
+          if (pr.current.isNotEmpty)
+            Text(S.t('now_sending', {'name': pr.current}),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Clay.sub)),
+        ]),
+      ),
+      const SizedBox(height: 18),
+      Row(children: [
+        stat(S.t('speed_label'), pr.mbps > 0 ? '${pr.mbps.toStringAsFixed(1)} MB/s' : '—'),
+        const SizedBox(width: 16),
+        stat(S.t('remaining'), eta ?? '—'),
+      ]),
+      if (c.transport != 'wifi') ...[
+        const SizedBox(height: 18),
+        ClaySurface(radius: 24, depth: 6, padding: const EdgeInsets.all(16), child: _PathInfo(c: c)),
+      ],
       if (c.reconnecting && !c.switchingPath) ...[
         const SizedBox(height: 16),
-        Row(children: [const Icon(Icons.wifi_off_rounded), const SizedBox(width: 8), Expanded(child: Text(S.t('reconnecting')))]),
+        ClayNote(text: S.t('reconnecting'), icon: Icons.wifi_off_rounded),
       ],
       if (c.deviceWarning != null) ...[
         const SizedBox(height: 16),
-        Row(children: [const Icon(Icons.warning_amber_rounded), const SizedBox(width: 8), Expanded(child: Text(S.t(c.deviceWarning!)))]),
+        ClayNote(text: S.t(c.deviceWarning!), icon: Icons.warning_amber_rounded),
       ],
-      if (Platform.isIOS) ...[const SizedBox(height: 16), Text(S.t('keep_open_ios'), style: tt.bodySmall)],
-      const SizedBox(height: 32),
-      if (c.role == 'sender')
-        OutlinedButton(onPressed: c.togglePause, child: Text(c.userPaused ? S.t('resume') : S.t('pause'))),
-      TextButton(onPressed: c.cancel, child: Text(S.t('cancel'))),
+      if (Platform.isIOS) ...[
+        const SizedBox(height: 12),
+        Text(S.t('keep_open_ios'), style: const TextStyle(fontSize: 12, color: Clay.sub)),
+      ],
+      const SizedBox(height: 26),
+      Row(children: [
+        if (c.role == 'sender') ...[
+          Expanded(
+            child: ClayButton(
+              onPressed: c.togglePause,
+              icon: c.userPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+              label: c.userPaused ? S.t('resume') : S.t('pause'),
+            ),
+          ),
+          const SizedBox(width: 16),
+        ],
+        Expanded(child: ClayButton(onPressed: c.cancel, label: S.t('cancel'), color: Clay.danger)),
+      ]),
     ]);
   }
 }
@@ -487,39 +711,85 @@ class _ReportView extends StatelessWidget {
   final MigrationController c;
   @override
   Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    final (title, icon) = switch (c.state) {
-      MigrationState.completed => (S.t('done_ok'), Icons.check_circle_rounded),
-      MigrationState.partial => (S.t('done_partial'), Icons.error_outline_rounded),
-      MigrationState.cancelled => (S.t('done_cancelled'), Icons.cancel_outlined),
-      _ => (S.t('done_failed'), Icons.error_rounded),
+    final (title, icon, ok) = switch (c.state) {
+      MigrationState.completed => (S.t('done_ok'), Icons.check_rounded, true),
+      MigrationState.partial => (S.t('done_partial'), Icons.priority_high_rounded, false),
+      MigrationState.cancelled => (S.t('done_cancelled'), Icons.close_rounded, false),
+      _ => (S.t('done_failed'), Icons.error_outline_rounded, false),
     };
     final needsAction = c.imports.where((i) => i.status != 'imported').toList();
     final deniedImport = c.importPermission.entries.where((e) => e.value == 'denied').map((e) => e.key).toList();
+    Widget stat(int n, String label, Color color) => Expanded(
+          child: ClayInset(
+            radius: 22,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+            child: Column(children: [
+              Text('$n', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: color)),
+              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Clay.sub)),
+            ]),
+          ),
+        );
     return ListView(children: [
-      Icon(icon, size: 64),
       const SizedBox(height: 8),
-      Text(title, textAlign: TextAlign.center, style: tt.headlineSmall),
-      if (c.error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(errorText(c.error!), textAlign: TextAlign.center)),
+      Center(
+        child: ok
+            ? ClayBlob(icon: icon, size: 96, filled: true)
+            : ClayBlob(icon: icon, size: 96, iconColor: c.state == MigrationState.cancelled ? Clay.sub : Clay.danger),
+      ),
       const SizedBox(height: 16),
-      ListTile(leading: const Icon(Icons.verified_rounded), title: Text(S.t('report_ok', {'n': c.okCount}))),
-      if (c.failedCount > 0) ListTile(leading: const Icon(Icons.close_rounded), title: Text(S.t('report_failed', {'n': c.failedCount}))),
-      if (c.skippedCount > 0) ListTile(leading: const Icon(Icons.block_rounded), title: Text(S.t('report_skipped', {'n': c.skippedCount}))),
+      Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+      if (c.error != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(errorText(c.error!),
+              textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Clay.sub)),
+        ),
+      const SizedBox(height: 20),
+      Row(children: [
+        stat(c.okCount, S.t('stat_ok'), Clay.accent),
+        const SizedBox(width: 12),
+        stat(c.failedCount, S.t('stat_failed'), Clay.danger),
+        const SizedBox(width: 12),
+        stat(c.skippedCount, S.t('stat_skipped'), Clay.sub),
+      ]),
+      const SizedBox(height: 18),
+      ClaySurface(
+        radius: 26,
+        depth: 6,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Column(children: [
+          ListTile(leading: const Icon(Icons.verified_rounded), title: Text(S.t('report_ok', {'n': c.okCount}))),
+          if (c.failedCount > 0)
+            ListTile(
+                leading: const Icon(Icons.close_rounded, color: Clay.danger),
+                title: Text(S.t('report_failed', {'n': c.failedCount}))),
+          if (c.skippedCount > 0)
+            ListTile(
+                leading: const Icon(Icons.block_rounded, color: Clay.sub),
+                title: Text(S.t('report_skipped', {'n': c.skippedCount}))),
+        ]),
+      ),
       if (needsAction.isNotEmpty) ...[
-        ListTile(leading: const Icon(Icons.touch_app_rounded), title: Text(S.t('report_action', {'n': needsAction.length}))),
+        const SizedBox(height: 16),
+        ClayNote(text: S.t('report_action', {'n': needsAction.length}), icon: Icons.touch_app_rounded),
         for (final i in needsAction.take(50))
           ListTile(dense: true, title: Text(i.name), subtitle: Text('${i.status} · ${i.location ?? ''} ${i.message ?? ''}')),
       ],
-      if (deniedImport.isNotEmpty)
+      if (deniedImport.isNotEmpty) ...[
+        const SizedBox(height: 12),
         ListTile(
           leading: const Icon(Icons.lock_outline_rounded),
           title: Text(S.t('import_denied', {'cats': deniedImport.join(', ')})),
           trailing: TextButton(onPressed: PtpPlatform.openAppSettings, child: Text(S.t('open_settings'))),
         ),
+      ],
+      const SizedBox(height: 24),
+      ClayPrimaryButton(onPressed: () => Navigator.of(context).pop(), label: S.t('finish')),
       const SizedBox(height: 16),
-      OutlinedButton.icon(
-        icon: const Icon(Icons.bug_report_outlined),
-        label: Text(S.t('export_log')),
+      ClayButton(
+        icon: Icons.bug_report_outlined,
+        label: S.t('export_log'),
+        height: 48,
         onPressed: () async {
           final where = await c.exportLog();
           if (context.mounted) {
@@ -527,9 +797,10 @@ class _ReportView extends StatelessWidget {
           }
         },
       ),
-      if (c.role == 'receiver' && (c.state == MigrationState.failed || c.state == MigrationState.cancelled))
-        OutlinedButton(onPressed: c.deletePartials, child: Text(S.t('delete_partial'))),
-      FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(S.t('finish'))),
+      if (c.role == 'receiver' && (c.state == MigrationState.failed || c.state == MigrationState.cancelled)) ...[
+        const SizedBox(height: 14),
+        ClayButton(onPressed: c.deletePartials, label: S.t('delete_partial'), height: 48),
+      ],
     ]);
   }
 }

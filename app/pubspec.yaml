@@ -5,7 +5,7 @@ version: 0.1.0+1
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
-  flutter: ">=3.22.0"
+  flutter: ">=3.27.0" # CardThemeData, Color.withValues (clay theme)
 
 # Versions are the intended ranges; they were NOT resolved here (pub.dev unreachable from the
 # authoring environment). Run `flutter pub get` and pin with pubspec.lock before any release.
@@ -29,3 +29,14 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Quicksand (SIL OFL 1.1, assets/fonts/Quicksand-OFL.txt): static 500/600/700 instances cut from the Google Fonts
+  # variable font. Bundled so the app needs no network for fonts; covers Vietnamese.
+  fonts:
+    - family: Quicksand
+      fonts:
+        - asset: assets/fonts/Quicksand-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Quicksand-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Quicksand-Bold.ttf
+          weight: 700
