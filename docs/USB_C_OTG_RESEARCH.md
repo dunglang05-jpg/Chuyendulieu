@@ -1,6 +1,6 @@
 # Nghiên cứu kết nối USB-C / OTG — Phone Transfer Pro
 
-Nhánh: `feature/usb-c-otg-transfer` · Ngày: 2026-11-09 · Trạng thái: **nghiên cứu, chưa có code, chưa thử trên thiết bị**
+Nhánh: `feature/usb-c-otg-transfer` · Ngày: 2026-11-09 · Trạng thái: **nghiên cứu xong; POC AOA Android ↔ Android đã có code và qua CI (xem `USB_C_OTG_ARCHITECTURE.md`, `USB_C_OTG_TEST_REPORT.md`); chưa thử trên thiết bị**
 
 > Mọi kết luận "khả thi" dưới đây là **khả thi theo tài liệu/API công khai**, chưa phải đã chứng minh. Mọi chiều đều là **NOT_TESTED** cho tới khi có thiết bị thật, log và SHA-256.
 
