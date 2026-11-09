@@ -511,7 +511,7 @@ class MigrationController extends ChangeNotifier {
       final ap = HotspotInfo.parse({'s': r['ssid'], 'k': r['psk'], 'sec': r['sec']});
       final ips = ((r['ips'] as List<Object?>?) ?? const []).whereType<String>().toList();
       // Never log the name or password.
-      _log.event('hotspot', {'state': 'started', 'band5': r['band5'], 'count': ips.length});
+      _log.event('hotspot', {'state': 'started', 'count': ips.length});
       return (ap, ips);
     } on PlatformException catch (e) {
       _log.event('hotspot', {'state': 'failed', 'code': e.code});

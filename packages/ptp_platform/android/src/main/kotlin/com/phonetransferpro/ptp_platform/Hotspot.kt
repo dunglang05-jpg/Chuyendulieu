@@ -99,7 +99,7 @@ class Hotspot(private val context: Context) {
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> "wpa3"
                 else -> "wpa2" // WPA2 and WPA3 transition mode both accept a WPA2 client
             }
-            return mapOf("ssid" to ssid, "psk" to psk, "sec" to sec, "band5" to bandHas5(c))
+            return mapOf("ssid" to ssid, "psk" to psk, "sec" to sec) // band is not public API; the OS picks it
         }
         @Suppress("DEPRECATION")
         val c = r.wifiConfiguration ?: return null
@@ -108,13 +108,7 @@ class Hotspot(private val context: Context) {
         @Suppress("DEPRECATION")
         val psk = c.preSharedKey?.removeSurrounding("\"")
         if (ssid.isNullOrEmpty() || psk.isNullOrEmpty()) return null
-        return mapOf("ssid" to ssid, "psk" to psk, "sec" to "wpa2", "band5" to null)
-    }
-
-    private fun bandHas5(c: SoftApConfiguration): Boolean? = try {
-        if (Build.VERSION.SDK_INT >= 30) (c.band and SoftApConfiguration.BAND_5GHZ) != 0 else null
-    } catch (_: Exception) {
-        null
+        return mapOf("ssid" to ssid, "psk" to psk, "sec" to "wpa2")
     }
 
     private fun waitForApAddress(triesLeft: Int, done: (List<String>) -> Unit) {

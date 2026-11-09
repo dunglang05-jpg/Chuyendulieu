@@ -39,7 +39,7 @@ Taking the router out of the path (like OPPO Clone Phone / Samsung Smart Switch)
 
 - **Shared phone hotspot:** if the phone's own hotspot is already on, LocalOnlyHotspot fails with `HOTSPOT_INCOMPATIBLE_MODE`. The app asks the user to turn it off.
 - **Single radio:** on phones that cannot do router Wi-Fi and hotspot at the same time, the host or joiner leaves the router network during the transfer. This is expected.
-- **Band:** the system chooses the hotspot band. The log records `band5` when the OS reports it. A 2.4 GHz hotspot may be slower than a good router link.
+- **Band:** the system chooses the hotspot band (not exposed to apps). A 2.4 GHz hotspot may be slower than a good router link.
 - **Joiner link drop:** the binding to the hotspot network is kept, so the existing resume logic redials over the same link.
 - **No auto cable switch:** the automatic Wi-Fi → cable switch is not combined with this mode.
 

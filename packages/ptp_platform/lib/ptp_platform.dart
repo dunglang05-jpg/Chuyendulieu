@@ -143,7 +143,7 @@ class PtpPlatform {
   static Future<void> vaultDelete(String name) => _call<void>('vaultDelete', {'name': name});
 
   /// "Điểm phát" host (Android only): app-scoped hotspot without Internet sharing.
-  /// Returns {ssid, psk, sec: wpa2|wpa3, band5: bool?, ips: [AP IPv4]}. Throws PlatformException with codes
+  /// Returns {ssid, psk, sec: wpa2|wpa3, ips: [AP IPv4]}. Throws PlatformException with codes
   /// HOTSPOT_PERMISSION | HOTSPOT_INCOMPATIBLE_MODE | HOTSPOT_DISALLOWED | HOTSPOT_NO_CHANNEL | HOTSPOT_FAILED |
   /// HOTSPOT_UNSUPPORTED (iOS). The name/password must never be logged.
   static Future<Map<String, Object?>> hotspotStart() async => Map<String, Object?>.from(await _call<Map>('hotspotStart'));
