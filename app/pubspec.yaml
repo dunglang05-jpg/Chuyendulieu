@@ -27,6 +27,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4  # build-time only: writes the app icon into the generated android/ios projects
   flutter_lints: ^4.0.0
 
 flutter:
@@ -42,3 +43,14 @@ flutter:
           weight: 600
         - asset: assets/fonts/Quicksand-Bold.ttf
           weight: 700
+
+# App icon "Chuyển dữ liệu" (clay style). Sources: assets/icon/*.png, drawn by tool/make_icon.py
+# (two phones + swap arrows on the lavender gradient). Applied by tool/bootstrap.sh.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icon/icon.png
+  adaptive_icon_background: assets/icon/background.png
+  adaptive_icon_foreground: assets/icon/foreground.png
+  remove_alpha_ios: true
+  min_sdk_android: 29
