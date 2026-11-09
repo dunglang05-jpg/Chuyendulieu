@@ -5,7 +5,7 @@ version: 0.1.0+1
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
-  flutter: ">=3.22.0"
+  flutter: ">=3.44.0" # built-in Kotlin in ptp_platform (P1-9); also covers the clay theme APIs (3.27)
 
 # Versions are the intended ranges; they were NOT resolved here (pub.dev unreachable from the
 # authoring environment). Run `flutter pub get` and pin with pubspec.lock before any release.
@@ -20,12 +20,37 @@ dependencies:
   path: ^1.9.0
   sqflite: ^2.3.3         # history, checkpoints, reports
   qr_flutter: ^4.1.0      # show QR
-  mobile_scanner: ^5.1.1  # scan QR
+  # Audit P1-8/P1-9: 7.x drops Google ML Kit on iOS (Apple Vision instead) and only applies the Kotlin Gradle
+  # Plugin when built-in Kotlin is off. Android still uses the bundled ML Kit barcode model.
+  mobile_scanner: ^7.5.0  # scan QR
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4  # build-time only: writes the app icon into the generated android/ios projects
   flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
+  # Quicksand (SIL OFL 1.1, assets/fonts/Quicksand-OFL.txt): static 500/600/700 instances cut from the Google Fonts
+  # variable font. Bundled so the app needs no network for fonts; covers Vietnamese.
+  fonts:
+    - family: Quicksand
+      fonts:
+        - asset: assets/fonts/Quicksand-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Quicksand-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Quicksand-Bold.ttf
+          weight: 700
+
+# App icon "Chuyển dữ liệu" (clay style). Sources: assets/icon/*.png, drawn by tool/make_icon.py
+# (two phones + swap arrows on the lavender gradient). Applied by tool/bootstrap.sh.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icon/icon.png
+  adaptive_icon_background: assets/icon/background.png
+  adaptive_icon_foreground: assets/icon/foreground.png
+  remove_alpha_ios: true
+  min_sdk_android: 29

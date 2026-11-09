@@ -14,6 +14,7 @@ import '../protocol/constants.dart';
 import '../protocol/errors.dart';
 import '../protocol/framing.dart';
 import '../protocol/qr_payload.dart';
+import 'continuation.dart' show sessionBinding;
 import 'identity.dart';
 
 class DeviceInfo {
@@ -40,7 +41,12 @@ typedef ConfirmCallback = Future<bool> Function(String sas, DeviceInfo peer);
 
 class PtpChannel {
   PtpChannel(this.socket, this.reader, this.writer,
-      {required this.role, required this.sas, required this.peer, required this.resumeToken, required this.resumed});
+      {required this.role,
+      required this.sas,
+      required this.peer,
+      required this.resumeToken,
+      required this.resumed,
+      required this.binding});
 
   final Socket socket;
   final FrameReader reader;
@@ -50,6 +56,10 @@ class PtpChannel {
   final DeviceInfo peer;
   final Uint8List resumeToken;
   final bool resumed;
+
+  /// Hash of this session's id, pinned certificate and both handshake nonces (continuation.dart): proofs that must
+  /// not be replayable in another session are bound to it.
+  final Uint8List binding;
   late Capabilities localCaps;
   late Capabilities peerCaps;
 
@@ -85,7 +95,14 @@ Future<void> _exchangeCaps(PtpChannel ch, Capabilities caps) async {
 
 /// Device that shows the QR code and runs the TLS server.
 class PtpHost {
-  PtpHost({required this.role, required this.device, required this.confirm, required this.caps, required this.identity})
+  PtpHost(
+      {required this.role,
+      required this.device,
+      required this.confirm,
+      required this.caps,
+      required this.identity,
+      this.loopbackOnly = false,
+      this.flags = const []})
       : sid = randomBytes(16),
         expiresAt = DateTime.now().add(qrTtl);
 
@@ -94,6 +111,12 @@ class PtpHost {
   ConfirmCallback confirm;
   final Capabilities caps;
   final EphemeralIdentity identity;
+
+  /// USB-only mode: listen on 127.0.0.1 so the only way in is the USB bridge (no Wi-Fi fallback).
+  final bool loopbackOnly;
+
+  /// Non-sensitive QR feature flags, e.g. 'usb' tells the scanner to connect through the cable.
+  final List<String> flags;
   final Uint8List sid;
   DateTime expiresAt;
 
@@ -110,9 +133,10 @@ class PtpHost {
 
   /// Bind on all interfaces; endpoints advertise private IPv4/IPv6 addresses of Wi-Fi / hotspot interfaces.
   Future<void> start({int port = 0}) async {
-    _server = await SecureServerSocket.bind(InternetAddress.anyIPv4, port, identity.serverContext());
+    _server = await SecureServerSocket.bind(
+        loopbackOnly ? InternetAddress.loopbackIPv4 : InternetAddress.anyIPv4, port, identity.serverContext());
     _server!.listen(_handle, onError: (Object _) {});
-    endpoints = await localEndpoints(_server!.port);
+    endpoints = loopbackOnly ? ['127.0.0.1:${_server!.port}'] : await localEndpoints(_server!.port);
     _chIt = StreamIterator(_channels.stream);
   }
 
@@ -126,6 +150,7 @@ class PtpHost {
         fingerprint: identity.fingerprint,
         hostRole: role,
         platform: device.platform,
+        flags: flags,
       );
 
   /// Waits for the next authenticated channel (first pairing or a resume).
@@ -210,7 +235,12 @@ class PtpHost {
       }
       await writer.control({'t': 'paired', 'resumeToken': b64u(resumeToken!), 'resumed': resume != null});
       final ch = PtpChannel(socket, reader, writer,
-          role: role, sas: sas, peer: peer, resumeToken: resumeToken!, resumed: resume != null);
+          role: role,
+          sas: sas,
+          peer: peer,
+          resumeToken: resumeToken!,
+          resumed: resume != null,
+          binding: sessionBinding(sid, fp, nonceJ, nonceH));
       await _exchangeCaps(ch, caps);
       lastActivity = DateTime.now();
       return ch;
@@ -282,7 +312,12 @@ Future<PtpChannel> joinSession(
       final paired = await reader.expect('paired', timeout: confirmTimeout);
       final token = unb64u(paired['resumeToken'], length: 32);
       final ch = PtpChannel(socket, reader, writer,
-          role: role, sas: sas, peer: peer, resumeToken: token, resumed: resumeToken != null);
+          role: role,
+          sas: sas,
+          peer: peer,
+          resumeToken: token,
+          resumed: resumeToken != null,
+          binding: sessionBinding(qr.sid, qr.fingerprint, nonceJ, nonceH));
       await _exchangeCaps(ch, capsForRole(role));
       return ch;
     } on PtpException catch (e) {

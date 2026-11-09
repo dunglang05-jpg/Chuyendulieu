@@ -17,7 +17,8 @@ Cả bốn chiều dùng **cùng một giao thức và cùng engine Dart**; ch�
 
 | Hạng mục | Bằng chứng | Môi trường |
 |---|---|---|
-| **CI GitHub Actions (run 42543205544, commit 3a1db79)**: `flutter analyze` → *No issues found*; **23/23 test Dart pass** (vector chéo Python↔Dart, domain, log không lộ dữ liệu cá nhân, TLS loopback cả 2 hướng QR, resume, sai fingerprint, path traversal, thiếu dung lượng, hủy, **2 worker isolate thật ghép đôi và truyền**); APK debug + **APK release arm64 33,4 MB** + iOS chưa ký build thành công | Log CI trên repo | Ubuntu (Flutter 3.47.9), macOS (Xcode 26.6) — không phải điện thoại |
+| **CI nhánh `feature/usb-c-otg-transfer` (run 42567659181, commit 69ae8ef)**: analyze *No issues*; **54/54 test Dart**, 45/45 Python, test JVM Kotlin; APK release arm64 36,2 MB; iOS chưa ký build OK | Log CI | Ubuntu (Flutter 3.47.9), macOS — không phải điện thoại |
+| **CI GitHub Actions (run 42543205544, commit 3a1db79, nhánh main)**: `flutter analyze` → *No issues found*; **23/23 test Dart pass** (vector chéo Python↔Dart, domain, log không lộ dữ liệu cá nhân, TLS loopback cả 2 hướng QR, resume, sai fingerprint, path traversal, thiếu dung lượng, hủy, **2 worker isolate thật ghép đôi và truyền**); APK debug + **APK release arm64 33,4 MB** + iOS chưa ký build thành công | Log CI trên repo | Ubuntu (Flutter 3.47.9), macOS (Xcode 26.6) — không phải điện thoại |
 | Giao thức PTP/1 (ghép đôi, TLS 1.3 ghim fingerprint, xác nhận mã 6 số, capability, manifest, chunk, ack, SHA-256, resume, batch) | 45/45 test pytest pass (`tools/reference_peer`) | Linux x86_64, Python 3.13.18, OpenSSL 3.5.9, loopback 127.0.0.1 |
 | Chống path traversal, symlink, replay QR, sai fingerprint, sai session id + rate limit, QR hết hạn, frame quá lớn trước xác thực, TLS 1.2 bị từ chối | Có test riêng cho từng trường hợp | như trên |
 | Bộ nhớ có giới hạn | 1 GiB truyền xong với RSS đỉnh 48–49 MiB, SHA-256 khớp | như trên, **không phải số liệu điện thoại** |
@@ -25,9 +26,29 @@ Cả bốn chiều dùng **cùng một giao thức và cùng engine Dart**; ch�
 
 Thông lượng loopback đo được dao động 118–170 MiB/s giữa các lần chạy trên cùng máy chủ. Con số này **không** nói gì về tốc độ Wi-Fi giữa hai điện thoại.
 
-## Đã sửa theo báo cáo rà soát (2026-11-08 → 09)
+## Danh sách lỗi rà soát P0–P2 (cập nhật 2026-11-09, nhánh `feature/usb-c-otg-transfer`)
 
-P0-1 quyền ghi ở máy nhận · P0-2 isolate nền · P0-3 log chẩn đoán · P1-4 quyền thông báo + `onTimeout` Android 15 · P1-5 rò rỉ host khi tạo QR mới · P1-6 nút mở Cài đặt · P2-12 tiến trình máy nhận · P2-15 dọn file tạm · P2-17 bỏ 2 quyền thừa trong plugin. Còn lại: P1-7, P1-8, P1-9, P1-10, P1-11, P2-13, P2-16, P2-18 (xem `AUDIT_REPORT`).
+| ID | Trạng thái | Ghi chú |
+|---|---|---|
+| P0-1 quyền ghi ở máy nhận | ✅ Đã sửa | |
+| P0-2 isolate nền | ✅ Đã sửa | |
+| P0-3 log chẩn đoán | ✅ Đã sửa | |
+| P1-4 quyền thông báo + `onTimeout` | ✅ Đã sửa | |
+| P1-5 rò rỉ host khi tạo QR mới | ✅ Đã sửa | |
+| P1-6 nút mở Cài đặt | ✅ Đã sửa | |
+| P1-7 Android ghi 2 lần | ✅ Đã sửa | Ghi thẳng vào MediaStore; chưa thử trên máy |
+| P1-8 ML Kit / DataTransport | ◐ Một phần | iOS hết ML Kit (mobile_scanner 7.5); Android vẫn còn — cần so sánh trên máy trước khi thay |
+| P1-9 Kotlin Gradle Plugin | ✅ Đã sửa | Built-in Kotlin; cảnh báo KGP hết trên CI |
+| P1-10 khôi phục sau khi tắt app | ✅ Đã làm | Ghép đôi lại + Keystore/Keychain; chưa thử kill tiến trình thật |
+| P1-11 TLS ≥ 1.3 | ◐ Giới hạn còn | Đo được: mặc định 1.3, 1.1 bị từ chối, 1.2-only vẫn vào được; Dart không có API ép |
+| P2-12 tiến trình máy nhận | ✅ Đã sửa | |
+| P2-13 iOS xuất cả lô trước khi gửi | ☐ Chưa làm | |
+| P2-15 dọn file tạm | ✅ Đã sửa | |
+| P2-16 khóa ký / chính sách riêng tư | ☐ Chưa làm | Cần khóa ký của bạn |
+| P2-17 quyền thừa | ✅ Đã sửa | `ACCESS_NETWORK_STATE` trong APK hiện đến từ ML Kit/DataTransport |
+| P2-18 kiểm tra sau khi ghi | ✅ Đã làm | Luôn kiểm kích thước; đọc lại toàn bộ là tùy chọn |
+
+Chi tiết từng mục: `docs/REMAINING_HARDENING_REPORT.md`. Mới phát hiện: `ptp_platform` chưa hỗ trợ Swift Package Manager trên iOS (Flutter cảnh báo sẽ thành lỗi ở bản sau).
 
 ## Cái gì chưa được kiểm chứng
 

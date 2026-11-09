@@ -44,6 +44,9 @@ class Endpoint {
       address.type == InternetAddressType.IPv6 ? '[${address.address}]:$port' : '${address.address}:$port';
 }
 
+/// QR flag: the host chose "Tự động" (Wi-Fi, may move to a USB-C cable when both phones are Android).
+const usbAutoFlag = 'usbauto';
+
 class QrPayload {
   QrPayload({
     required this.version,

@@ -96,4 +96,39 @@ class PtpPlatform {
       Map<String, Object?>.from(await _call<Map>('deviceState'));
 
   static Future<void> openAppSettings() => _call<void>('openAppSettings');
+
+  /// USB-C cable link (Android ↔ Android via AOA). iOS always reports supported=false.
+  /// {supported, hostSupported, accessorySupported, state: idle|waiting|permission|switching|connected|failed|stopped,
+  ///  role: usb_host|usb_accessory|null, error, bridgePort}
+  static Future<Map<String, Object?>> usbStatus() async =>
+      Map<String, Object?>.from(await _call<Map>('usbStatus'));
+
+  /// mode 'listen' (this app joins: returns bridgePort once connected) or 'connect' (this app hosts on [port]).
+  /// [timeoutMs]: how long to wait for a cable (90 s when the user picked cable-only; the whole session in "auto").
+  static Future<Map<String, Object?>> usbStart(String mode, {int port = 0, int timeoutMs = 90000}) async =>
+      Map<String, Object?>.from(await _call<Map>('usbStart', {'mode': mode, 'port': port, 'timeoutMs': timeoutMs}));
+
+  static Future<void> usbStop() => _call<void>('usbStop');
+
+  /// Android only (audit P1-7): receive straight into a hidden MediaStore item (IS_PENDING=1) so each byte is
+  /// written once. Returns {uri, path}; `path` is /proc/self/fd/N of a read+write descriptor kept open natively.
+  static Future<Map<String, String>> mediaCreate(String category, String name, String? mime) async =>
+      Map<String, String>.from(await _call<Map>('mediaCreate', {'category': category, 'name': name, 'mime': mime}));
+
+  /// Path for an existing pending item (reconnect / restart). Throws if it no longer exists.
+  static Future<String> mediaReopen(String uri) async => await _call<String>('mediaReopen', {'uri': uri});
+
+  /// Clears IS_PENDING (item becomes visible); returns a readable location such as "Pictures/PhoneTransferPro/a.jpg".
+  static Future<String> mediaPublish(String uri) async => await _call<String>('mediaPublish', {'uri': uri});
+
+  static Future<void> mediaDelete(String uri) => _call<void>('mediaDelete', {'uri': uri});
+
+  /// Audit P1-10: small secrets sealed by Android Keystore (AES-GCM) / iOS Keychain (this device only).
+  /// [name]: 1–64 chars of [A-Za-z0-9_-]. [data]: base64.
+  static Future<void> vaultPut(String name, String data) => _call<void>('vaultPut', {'name': name, 'data': data});
+
+  /// Base64, or null when absent / no longer decryptable.
+  static Future<String?> vaultGet(String name) async => await _call<String?>('vaultGet', {'name': name});
+
+  static Future<void> vaultDelete(String name) => _call<void>('vaultDelete', {'name': name});
 }

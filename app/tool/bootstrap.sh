@@ -37,4 +37,6 @@ else
 fi
 
 flutter pub get
+# App icon (Android mipmaps + adaptive icon, iOS AppIcon set) from assets/icon/.
+dart run flutter_launcher_icons
 echo "Bootstrap done. Next: flutter analyze && flutter test"

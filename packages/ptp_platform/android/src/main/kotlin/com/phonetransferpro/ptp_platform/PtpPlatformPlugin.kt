@@ -26,6 +26,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.phonetransferpro.ptp_platform.usb.UsbTransport
 import java.io.File
 
 class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware,
@@ -38,6 +39,8 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var media: MediaAdapter
     private lateinit var contacts: ContactsAdapter
+    private lateinit var usbTransport: UsbTransport
+    private lateinit var vault: SecureVault
 
     private var pendingPermission: Pair<Int, MethodChannel.Result>? = null
     private var pendingPermissionCategory: String? = null
@@ -47,7 +50,9 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     override fun onAttachedToEngine(b: FlutterPlugin.FlutterPluginBinding) {
         context = b.applicationContext
         media = MediaAdapter(context)
+        vault = SecureVault(context)
         contacts = ContactsAdapter(context)
+        usbTransport = UsbTransport(context)
         channel = MethodChannel(b.binaryMessenger, "com.phonetransferpro/ptp_platform")
         channel.setMethodCallHandler(this)
     }
@@ -55,6 +60,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     override fun onDetachedFromEngine(b: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
         media.closeAll()
+        usbTransport.stop()
         scope.cancel()
     }
 
@@ -114,11 +120,41 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 val mime = call.argument<String>("mime")
                 if (cat == "contacts") contacts.importViaSystemApp(activity, File(path)) else media.importFile(File(path), cat, name, mime)
             }
+            // Receive straight into MediaStore (audit P1-7). NOT TESTED ON DEVICES.
+            "mediaCreate" -> io(result) {
+                media.createPending(call.argument<String>("category")!!, call.argument<String>("name")!!, call.argument<String>("mime"))
+            }
+            // Continuation key (audit P1-10), sealed by Android Keystore. NOT TESTED ON DEVICES.
+            "vaultPut" -> io(result) {
+                vault.put(call.argument<String>("name")!!, android.util.Base64.decode(call.argument<String>("data")!!, android.util.Base64.NO_WRAP))
+                null
+            }
+            "vaultGet" -> io(result) {
+                vault.get(call.argument<String>("name")!!)?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+            }
+            "vaultDelete" -> io(result) { vault.delete(call.argument<String>("name")!!); null }
+            "mediaReopen" -> io(result) { media.reopenPending(call.argument<String>("uri")!!) }
+            "mediaPublish" -> io(result) { media.publishPending(call.argument<String>("uri")!!) }
+            "mediaDelete" -> io(result) { media.deletePending(call.argument<String>("uri")!!); null }
             "setTransferActive" -> {
                 TransferService.setActive(context, call.argument<Boolean>("active") ?: false)
                 result.success(null)
             }
             "deviceState" -> result.success(deviceState())
+            // USB-C Android↔Android link (AOA). See docs/USB_C_OTG_ARCHITECTURE.md. NOT TESTED ON DEVICES.
+            "usbStatus" -> result.success(usbTransport.status())
+            "usbStart" -> {
+                usbTransport.start(
+                    call.argument<String>("mode") ?: "listen",
+                    call.argument<Int>("port") ?: 0,
+                    (call.argument<Number>("timeoutMs")?.toLong() ?: 90_000L).coerceIn(5_000L, 12 * 3_600_000L),
+                )
+                result.success(usbTransport.status())
+            }
+            "usbStop" -> {
+                usbTransport.stop()
+                result.success(null)
+            }
             "openAppSettings" -> {
                 val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

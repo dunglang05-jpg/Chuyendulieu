@@ -17,6 +17,8 @@ import 'dart:typed_data';
 import '../domain/capabilities.dart';
 import '../protocol/constants.dart';
 import '../protocol/errors.dart';
+import '../protocol/codec.dart';
+import '../session/continuation.dart';
 import '../session/identity.dart';
 import '../session/session.dart';
 import '../transfer/engine.dart';
@@ -53,6 +55,40 @@ class WorkerSource extends TransferSource {
   }
 }
 
+/// Direct-to-destination sink backed by the platform plugin through the UI isolate (audit P1-7).
+class _RpcMediaSink implements MediaSink {
+  _RpcMediaSink(this._rpc, this._categories);
+  final Future<Object?> Function(String op, Map<String, Object?> args) _rpc;
+  final Set<String> _categories;
+
+  @override
+  bool supports(String category) => _categories.contains(category);
+
+  @override
+  Future<Map<String, String>> create(String category, String name, String? mime) async {
+    final r = await _rpc('mediaCreate', {'category': category, 'name': name, 'mime': mime});
+    if (r is! Map || r['uri'] is! String || r['path'] is! String) throw StateError('mediaCreate failed');
+    return {'uri': r['uri'] as String, 'path': r['path'] as String};
+  }
+
+  @override
+  Future<String> reopen(String uri) async {
+    final r = await _rpc('mediaReopen', {'uri': uri});
+    if (r is! String) throw StateError('mediaReopen failed');
+    return r;
+  }
+
+  @override
+  Future<String> publish(String uri) async {
+    final r = await _rpc('mediaPublish', {'uri': uri});
+    if (r is! String) throw PtpException(PtpErrorCode.internalError, 'publish failed');
+    return r;
+  }
+
+  @override
+  Future<void> delete(String uri) async => _rpc('mediaDelete', {'uri': uri});
+}
+
 /// Isolate entry point. First message sent back is this isolate's command SendPort.
 void transferWorkerEntry(SendPort toMain) {
   final commands = ReceivePort();
@@ -77,6 +113,10 @@ class _Worker {
   CancelToken _cancel = CancelToken();
   final PauseGate _pause = PauseGate();
   ReceiverStore? _store;
+
+  /// Audit P1-10: earlier unfinished transfers (with their keys) and the outcome of the continuation exchange.
+  List<ContinuationRecord> _contCandidates = const [];
+  ContinuationOutcome? _cont;
   final Map<int, Completer<Object?>> _rpcs = {};
   int _rpcSeq = 0;
 
@@ -112,6 +152,8 @@ class _Worker {
         unawaited(_guard(() => _receive(a as Map<String, Object?>)));
       case 'reconnect':
         unawaited(_guard(_reconnect));
+      case 'dial':
+        _dial(a as Map<String, Object?>);
       case 'pause':
         _pause.pause();
       case 'resume':
@@ -146,21 +188,77 @@ class _Worker {
     return _confirm!.future;
   }
 
+  static List<ContinuationRecord> _parseCandidates(Object? raw) {
+    final out = <ContinuationRecord>[];
+    for (final m in (raw as List<Object?>?) ?? const []) {
+      try {
+        final j = (m as Map).cast<String, Object?>();
+        out.add(ContinuationRecord.fromJson(j, unb64u(j['key'], length: 32)));
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  /// After a NEW pairing only (never after an in-session resume), and only if both apps implement it.
+  Future<void> _negotiateContinuation() async {
+    final ch = _ch!;
+    if (ch.resumed) return;
+    if (!ch.localCaps.features.contains(continuationFeature) || !ch.peerCaps.features.contains(continuationFeature)) {
+      _cont = null;
+      return;
+    }
+    _cont = await negotiateContinuation(ch, _contCandidates);
+    _log('continuation', {'state': _cont!.continued ? 'continued' : 'new', 'count': _contCandidates.length});
+  }
+
   void _paired() {
     final ch = _ch!;
     _resumeToken = ch.resumeToken;
-    _emit('paired', {'peer': ch.peer, 'plan': ch.plan.toList(), 'resumed': ch.resumed});
+    bool loopback;
+    try {
+      loopback = ch.socket.remoteAddress.isLoopback;
+    } catch (_) {
+      loopback = false;
+    }
+    final c = _cont;
+    _emit('paired', {
+      'peer': ch.peer,
+      'plan': ch.plan.toList(),
+      'resumed': ch.resumed,
+      'loopback': loopback,
+      if (!ch.resumed && c != null)
+        'cont': {...c.record.toJson(), 'key': b64u(c.record.key), 'continued': c.continued},
+    });
+  }
+
+  /// "Tự động" path switch (joiner only, it is the side that dials). Replaces the endpoints used by the next
+  /// (re)connect; with `drop`, closes the live socket so the normal PTP/1 resume moves the session onto the new
+  /// path: same session, certificate pinned again, resume proof, receiver continues from its checkpoints.
+  void _dial(Map<String, Object?> a) {
+    if (_host != null || _joinUri == null) return;
+    _joinUri = a['uri'] as String;
+    _log('path_dial', {'to': a['to'], 'state': a['drop'] == true ? 'drop' : 'next'});
+    if (a['drop'] == true) _ch?.socket.destroy();
   }
 
   Future<void> _startHost(Map<String, Object?> a) async {
     _device = a['device'] as DeviceInfo;
     _caps = a['caps'] as Capabilities;
     final identity = await EphemeralIdentity.generate();
-    final h = PtpHost(role: a['role'] as String, device: _device, confirm: _confirmCb, caps: _caps, identity: identity);
+    final h = PtpHost(
+        role: a['role'] as String,
+        device: _device,
+        confirm: _confirmCb,
+        caps: _caps,
+        identity: identity,
+        loopbackOnly: a['loopbackOnly'] == true,
+        flags: ((a['flags'] as List<Object?>?) ?? const []).cast<String>());
     await h.start();
     _host = h;
+    _contCandidates = _parseCandidates(a['cont']);
     _emit('qr', {'uri': h.qr.toUri(), 'expiresAt': h.expiresAt, 'endpoints': h.endpoints, 'port': h.port});
     _ch = await h.accept();
+    await _negotiateContinuation();
     _paired();
   }
 
@@ -168,7 +266,9 @@ class _Worker {
     _device = a['device'] as DeviceInfo;
     _caps = a['caps'] as Capabilities;
     _joinUri = a['uri'] as String;
+    _contCandidates = _parseCandidates(a['cont']);
     _ch = await joinSession(_joinUri!, device: _device, confirm: _confirmCb, capsForRole: (_) => _caps);
+    await _negotiateContinuation();
     _paired();
   }
 
@@ -204,9 +304,20 @@ class _Worker {
   Future<void> _receive(Map<String, Object?> a) async {
     final cpDir = a['checkpoints'] as String;
     await Directory(cpDir).create(recursive: true);
-    _store ??= ReceiverStore(a['inbox'] as String, JsonCheckpointStore(cpDir),
+    final mediaCats = ((a['mediaCategories'] as List<Object?>?) ?? const []).cast<String>().toSet();
+    final cont = _cont;
+    _store ??= ReceiverStore(
+        a['inbox'] as String,
+        // Checkpoints are MAC'd with the continuation key when there is one (audit P1-10).
+        JsonCheckpointStore(cpDir, macKey: cont?.record.key, onRejected: (r) => _log('checkpoint_rejected', {'reason': r})),
         (path) async => (await _rpc('freeBytes', {'path': path})) as int,
-        reserve: a['reserve'] as int? ?? storageReserve);
+        reserve: a['reserve'] as int? ?? storageReserve,
+        media: mediaCats.isEmpty ? null : _RpcMediaSink(_rpc, mediaCats),
+        importCopies: a['importCopies'] == true,
+        verify: a['verify'] == 'full' ? VerifyMode.full : VerifyMode.size,
+        onEvent: _log,
+        // Partial data from an earlier session is reused only for transfers both phones agreed to continue.
+        resumeAllowed: (tid) => cont != null && cont.continued && cont.record.transferIds.contains(tid));
     final store = _store!;
     while (true) {
       final rep = await runReceiver(_ch!, store,
@@ -247,7 +358,8 @@ class _Worker {
         } on PtpException catch (e) {
           _log('reconnect_attempt', {'code': e.code.wire});
           if (e.code != PtpErrorCode.peerTimeout && e.code != PtpErrorCode.sessionBusy) rethrow;
-          await Future<void>.delayed(const Duration(seconds: 3));
+          // Busy = the host has not noticed the old socket closing yet (typical right after a path switch).
+          await Future<void>.delayed(Duration(seconds: e.code == PtpErrorCode.sessionBusy ? 1 : 3));
         }
       }
     }

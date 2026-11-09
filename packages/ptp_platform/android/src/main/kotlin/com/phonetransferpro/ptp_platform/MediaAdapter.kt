@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 class MediaAdapter(private val context: Context) {
     private val openFds = ConcurrentHashMap<String, ParcelFileDescriptor>()
     private val staged = ConcurrentHashMap<String, File>()
+    private val pending = ConcurrentHashMap<String, ParcelFileDescriptor>() // MediaStore uri -> rw descriptor
 
     private fun collection(cat: String): Uri = when (cat) {
         "photos" -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -99,8 +100,69 @@ class MediaAdapter(private val context: Context) {
     fun closeAll() {
         openFds.values.forEach { runCatching { it.close() } }
         openFds.clear()
+        pending.values.forEach { runCatching { it.close() } }
+        pending.clear()
         staged.values.forEach { it.delete() }
         staged.clear()
+    }
+
+    private fun destination(cat: String): Pair<Uri, String> = when (cat) {
+        "photos" -> collection(cat) to "Pictures/PhoneTransferPro"
+        "videos" -> collection(cat) to "Movies/PhoneTransferPro"
+        "audio" -> collection(cat) to "Music/PhoneTransferPro"
+        else -> collection("documents") to "Download/PhoneTransferPro"
+    }
+
+    /**
+     * Audit P1-7: the receiver writes straight into a hidden MediaStore item instead of the app inbox, so a file is
+     * written once (no inbox → MediaStore copy, no 2× space). IS_PENDING=1 keeps it out of the gallery until the
+     * SHA-256 check passed and [publishPending] runs; MediaStore removes abandoned pending items by itself.
+     * Dart opens the returned /proc/self/fd/N path; if that fails on a device, Dart falls back to the inbox.
+     */
+    fun createPending(cat: String, name: String, mime: String?): Map<String, String> {
+        val (collection, base) = destination(cat)
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            if (mime != null) put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, base)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val item = resolver.insert(collection, values) ?: throw IllegalStateException("insert")
+        val pfd = try {
+            resolver.openFileDescriptor(item, "rw") ?: throw IllegalStateException("open")
+        } catch (e: Exception) {
+            resolver.delete(item, null, null)
+            throw e
+        }
+        pending[item.toString()] = pfd
+        return mapOf("uri" to item.toString(), "path" to "/proc/self/fd/${pfd.fd}")
+    }
+
+    fun reopenPending(uri: String): String {
+        pending[uri]?.let { return "/proc/self/fd/${it.fd}" }
+        val pfd = context.contentResolver.openFileDescriptor(Uri.parse(uri), "rw") ?: throw IllegalStateException("gone")
+        pending[uri] = pfd
+        return "/proc/self/fd/${pfd.fd}"
+    }
+
+    fun publishPending(uri: String): String {
+        pending.remove(uri)?.let { runCatching { it.fileDescriptor.sync() }; it.close() }
+        val item = Uri.parse(uri)
+        val resolver = context.contentResolver
+        if (resolver.update(item, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null) != 1) {
+            throw IllegalStateException("publish")
+        }
+        var location = "PhoneTransferPro"
+        resolver.query(item, arrayOf(MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) location = "${(c.getString(0) ?: "").trimEnd('/')}/${c.getString(1) ?: ""}"
+        }
+        return location
+    }
+
+    fun deletePending(uri: String) {
+        pending.remove(uri)?.let { runCatching { it.close() } }
+        runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
     }
 
     /**
@@ -108,12 +170,7 @@ class MediaAdapter(private val context: Context) {
      * IS_PENDING hides the item until the copy is complete, so a crash never leaves a half file visible.
      */
     fun importFile(src: File, cat: String, name: String, mime: String?): Map<String, Any?> {
-        val (collection, base) = when (cat) {
-            "photos" -> collection(cat) to "Pictures/PhoneTransferPro"
-            "videos" -> collection(cat) to "Movies/PhoneTransferPro"
-            "audio" -> collection(cat) to "Music/PhoneTransferPro"
-            else -> collection("documents") to "Download/PhoneTransferPro"
-        }
+        val (collection, base) = destination(cat)
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             if (mime != null) put(MediaStore.MediaColumns.MIME_TYPE, mime)
