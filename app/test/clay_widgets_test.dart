@@ -16,7 +16,8 @@ void main() {
       theme: Clay.theme(),
       home: Scaffold(
         body: StatefulBuilder(
-          builder: (context, setState) => ListView(padding: const EdgeInsets.all(24), children: [
+          // Column in a scroll view (not a lazy ListView) so every widget is built and laid out.
+          builder: (context, setState) => SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ClaySegmented<String>(
               options: const [
                 ('wifi', Icons.wifi_rounded, 'Wi-Fi / mạng'),
@@ -38,7 +39,7 @@ void main() {
             ClayPrimaryButton(label: 'Bắt đầu chuyển', onPressed: () => pressed++),
             const ClayPrimaryButton(label: 'Tắt', onPressed: null),
             ClayButton(label: 'Hủy', color: Clay.danger, onPressed: () => pressed++),
-          ]),
+          ])),
         ),
       ),
     ));
