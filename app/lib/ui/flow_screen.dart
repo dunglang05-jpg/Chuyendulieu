@@ -736,7 +736,7 @@ class _TransferView extends StatelessWidget {
       ],
       if (c.slowWifiMbps != null) ...[
         const SizedBox(height: 16),
-        ClayNote(text: S.t('slow_wifi', {'mbps': c.slowWifiMbps}), icon: Icons.network_check_rounded),
+        ClayNote(text: S.t('slow_wifi', {'mbps': c.slowWifiMbps!}), icon: Icons.network_check_rounded),
       ],
       if (c.deviceWarning != null) ...[
         const SizedBox(height: 16),

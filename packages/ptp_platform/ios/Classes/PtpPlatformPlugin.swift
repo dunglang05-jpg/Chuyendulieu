@@ -125,10 +125,19 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
       cfg.joinOnce = true
       NEHotspotConfigurationManager.shared.apply(cfg) { error in
         DispatchQueue.main.async {
-          if let e = error as NSError?, !(e.domain == NEHotspotConfigurationErrorDomain
-                                          && e.code == NEHotspotConfigurationError.alreadyAssociated.rawValue) {
-            let code = (e.domain == NEHotspotConfigurationErrorDomain
-                        && e.code == NEHotspotConfigurationError.userDenied.rawValue) ? "HOTSPOT_JOIN_DENIED" : "HOTSPOT_JOIN_FAILED"
+          var code: String? = nil
+          if let error = error {
+            if let ne = error as? NEHotspotConfigurationError {
+              switch ne.code {
+              case .alreadyAssociated: code = nil
+              case .userDenied: code = "HOTSPOT_JOIN_DENIED"
+              default: code = "HOTSPOT_JOIN_FAILED"
+              }
+            } else {
+              code = "HOTSPOT_JOIN_FAILED"
+            }
+          }
+          if let code = code {
             result(FlutterError(code: code, message: code, details: nil))
           } else {
             self.joinedSsid = ssid
