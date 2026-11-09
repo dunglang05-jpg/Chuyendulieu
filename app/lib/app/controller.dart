@@ -323,7 +323,7 @@ class MigrationController extends ChangeNotifier {
         final m = data as Map<String, Object?>;
         peer = m['peer'] as DeviceInfo;
         plan = (m['plan'] as List<Object?>).cast<String>().toSet();
-        onCable = transport == 'usb' || (transport == 'auto' && m['loopback'] == true);
+        onCable = transport == 'usb' || (autoCable && m['loopback'] == true);
         final cm = m['cont'];
         if (cm is Map) {
           try {
@@ -423,7 +423,8 @@ class MigrationController extends ChangeNotifier {
         'device': _device,
         'caps': caps,
         'loopbackOnly': usb,
-        'flags': usb ? const ['usb'] : (m == 'auto' ? const [usbAutoFlag] : const <String>[]),
+        // "Điểm phát" also switches to a cable when one is plugged in (user expectation from Smart Switch).
+        'flags': usb ? const ['usb'] : (m == 'auto' || m == 'hotspot' ? const [usbAutoFlag] : const <String>[]),
       });
     } on PtpException catch (e) {
       _fail(e);
@@ -623,9 +624,9 @@ class MigrationController extends ChangeNotifier {
       if (usbState == 'connected') {
         if (bp is int && bp > 0) _usbPort = mode == 'listen' ? bp : _usbPort;
         if (!ready.isCompleted) ready.complete(mode == 'listen' ? (bp as int? ?? 0) : port);
-        if (transport == 'auto') _policy.onCableState(true);
+        if (autoCable) _policy.onCableState(true);
       } else if (usbState == 'failed') {
-        if (transport == 'auto') {
+        if (autoCable) {
           _policy.onCableState(false);
           final code = (usbError ?? '').split(':').first;
           // Unplugged or nothing plugged yet: keep waiting for a cable. Anything else (permission denied,
@@ -674,10 +675,14 @@ class MigrationController extends ChangeNotifier {
   // ------------------------------------------------------------------ "Tự động": Wi-Fi → cable handover
   static const int _autoWaitMs = 6 * 60 * 60 * 1000; // wait for a cable for the whole session, not 90 s
 
+  /// Wi-Fi → cable switching is active in 'auto' and in 'hotspot' (device test 2026-11-09: the cable was
+  /// plugged in during a "Điểm phát" transfer and nothing happened, because only 'auto' armed it).
+  bool get autoCable => transport == 'auto' || transport == 'hotspot';
+
   /// Both phones Android and the host asked for 'auto': start waiting for a cable in the background.
   /// The host forwards cable connections to its own TLS port; the joiner exposes the cable on a local port.
   Future<void> _armUsbAuto() async {
-    if (transport != 'auto' || _usbArmed) return;
+    if (!autoCable || _usbArmed) return;
     if (probe?.platform != 'android' || peer?.platform != 'android') {
       _log.event('path_auto_off', {'peerPlatform': peer?.platform});
       return;

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phones as seen by the USB host: Google AOA ids (peer already in accessory mode), MTP/PTP file transfer
+     (class 6, or vendor class 255 as Android's MTP uses). Choosing "Chuyển dữ liệu" in the system sheet
+     grants the USB permission directly. -->
+<resources>
+    <usb-device vendor-id="6353" product-id="11520" />
+    <usb-device vendor-id="6353" product-id="11521" />
+    <usb-device vendor-id="6353" product-id="11524" />
+    <usb-device vendor-id="6353" product-id="11525" />
+    <usb-device class="6" />
+    <usb-device class="255" subclass="255" />
+</resources>

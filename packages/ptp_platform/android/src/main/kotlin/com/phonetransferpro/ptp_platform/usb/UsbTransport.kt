@@ -46,6 +46,7 @@ class UsbTransport(private val context: Context) {
         private const val AOA_GET_PROTOCOL = 51
         private const val AOA_SEND_STRING = 52
         private const val AOA_START = 53
+        private const val ASK_AGAIN_MS = 15_000L
     }
 
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -64,7 +65,8 @@ class UsbTransport(private val context: Context) {
      * What the USB stack showed last (diagnostics, device test 2026-11-09 "no permission dialog"):
      * none = this phone sees no USB device and is not an accessory (neither phone became USB host),
      * device = a USB device is attached (we are host), not_android = it did not answer the AOA request,
-     * accessory = the peer switched us into accessory mode.
+     * switched = we asked the peer to enter accessory mode, accessory = the peer switched us into accessory mode,
+     * denied = a USB permission request was refused or left unanswered (asked again after 15 s).
      */
     @Volatile var seen: String = "none"
         private set
@@ -135,7 +137,12 @@ class UsbTransport(private val context: Context) {
     private fun establish(timeoutMs: Long): ByteLink {
         if (!hostSupported && !accessorySupported) throw IOException("USB_NOT_SUPPORTED")
         val deadline = System.currentTimeMillis() + timeoutMs
-        val triedSwitch = HashSet<String>()
+        val switched = HashSet<String>()
+        // Device test 2026-11-09: the system "choose an app for this USB device" sheet can hide our permission
+        // dialog. A refused/ignored request is asked again after a pause instead of giving up for good; choosing
+        // "Chuyển dữ liệu" in that system sheet ([UsbAttachActivity]) grants the permission directly.
+        val lastAsk = HashMap<String, Long>()
+        fun mayAsk(key: String) = System.currentTimeMillis() - (lastAsk[key] ?: 0L) > ASK_AGAIN_MS
         // Long waits ("auto" mode: a cable may be plugged in at any time) poll less often to save battery.
         val pollMs = if (timeoutMs > 5 * 60_000L) 1_000L else 300L
         while (!stopRequested) {
@@ -145,34 +152,54 @@ class UsbTransport(private val context: Context) {
             if (acc != null) {
                 seen = "accessory"
                 if (acc.manufacturer != MANUFACTURER || acc.model != MODEL) throw IOException("UNKNOWN_ACCESSORY")
-                if (!usb.hasPermission(acc)) {
+                if (!usb.hasPermission(acc) && mayAsk("acc")) {
+                    lastAsk["acc"] = System.currentTimeMillis()
                     state = "permission"
-                    if (!awaitPermission { pi -> usb.requestPermission(acc, pi) }) throw IOException("USB_PERMISSION_DENIED")
+                    if (!awaitPermission { pi -> usb.requestPermission(acc, pi) }) seen = "denied"
+                    state = "waiting"
                 }
-                role = "usb_accessory"
-                return openAccessory(acc)
+                if (usb.hasPermission(acc)) {
+                    role = "usb_accessory"
+                    return openAccessory(acc)
+                }
+                Thread.sleep(pollMs)
+                continue
             }
             // 2) We are the host and the peer is already in accessory mode.
             val devices = usb.deviceList.values
             if (devices.isNotEmpty() && seen == "none") seen = "device"
             val aoa = devices.firstOrNull { it.vendorId == GOOGLE_VID && it.productId in AOA_PIDS }
             if (aoa != null) {
-                if (!usb.hasPermission(aoa)) {
+                if (!usb.hasPermission(aoa) && mayAsk(aoa.deviceName)) {
+                    lastAsk[aoa.deviceName] = System.currentTimeMillis()
                     state = "permission"
-                    if (!awaitPermission { pi -> usb.requestPermission(aoa, pi) }) throw IOException("USB_PERMISSION_DENIED")
+                    if (!awaitPermission { pi -> usb.requestPermission(aoa, pi) }) seen = "denied"
+                    state = "waiting"
                 }
-                role = "usb_host"
-                return openHost(aoa)
+                if (usb.hasPermission(aoa)) {
+                    role = "usb_host"
+                    return openHost(aoa)
+                }
+                Thread.sleep(pollMs)
+                continue
             }
             // 3) We are the host and see a phone that is not yet in accessory mode: ask it to switch (AOA).
             for (d in devices) {
-                if (!triedSwitch.add(d.deviceName)) continue
+                if (d.deviceName in switched) continue
                 if (!usb.hasPermission(d)) {
+                    if (!mayAsk(d.deviceName)) continue
+                    lastAsk[d.deviceName] = System.currentTimeMillis()
                     state = "permission"
-                    if (!awaitPermission { pi -> usb.requestPermission(d, pi) }) continue
+                    val ok = awaitPermission { pi -> usb.requestPermission(d, pi) }
+                    state = "waiting"
+                    if (!ok) {
+                        seen = "denied"
+                        continue
+                    }
                 }
                 state = "switching"
-                switchToAccessory(d) // the peer re-enumerates with the Google AOA VID/PID; loop picks it up
+                if (switchToAccessory(d)) switched.add(d.deviceName) // re-enumerates as AOA; loop picks it up
+                state = "waiting"
             }
             Thread.sleep(pollMs)
         }
@@ -201,14 +228,15 @@ class UsbTransport(private val context: Context) {
         return granted
     }
 
-    private fun switchToAccessory(d: UsbDevice) {
-        val c = usb.openDevice(d) ?: return
+    /** True when the AOA start command was sent (or the device is not an Android phone: do not retry it). */
+    private fun switchToAccessory(d: UsbDevice): Boolean {
+        val c = usb.openDevice(d) ?: return false
         try {
             val ver = ByteArray(2)
             val n = c.controlTransfer(0xC0, AOA_GET_PROTOCOL, 0, 0, ver, 2, 1000)
             if (n != 2 || (ver[0].toInt() or (ver[1].toInt() shl 8)) < 1) {
                 seen = "not_android" // e.g. a USB stick / hub, or a phone that refuses accessory mode
-                return
+                return true
             }
             val strings = listOf(MANUFACTURER, MODEL, DESCRIPTION, VERSION, URI, SERIAL)
             for ((i, s) in strings.withIndex()) {
@@ -216,6 +244,8 @@ class UsbTransport(private val context: Context) {
                 c.controlTransfer(0x40, AOA_SEND_STRING, 0, i, bytes, bytes.size, 1000)
             }
             c.controlTransfer(0x40, AOA_START, 0, 0, null, 0, 1000)
+            seen = "switched"
+            return true
         } finally {
             c.close()
         }

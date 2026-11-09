@@ -163,6 +163,14 @@ class S {
           '• Use a USB-C ↔ USB-C DATA cable (charge-only cables will not work) and unlock both phones.\n'
           'Still nothing: unplug, flip the cable ends and plug in again.'
     },
+    'usb_denied_hint': {
+      'vi': 'Đã thấy máy kia qua cáp nhưng chưa được cấp quyền USB. Nếu hiện bảng “Chọn ứng dụng cho thiết bị USB”, '
+          'hãy chọn “Chuyển dữ liệu” (không chọn Máy chủ MTP/Photos); nếu hiện hộp thoại quyền, bấm Cho phép. '
+          'Ứng dụng sẽ hỏi lại sau 15 giây.',
+      'en': 'The other phone is on the cable but USB access is not granted yet. In the “Choose an app for the USB '
+          'device” sheet pick “Chuyển dữ liệu” (not MTP host/Photos); in a permission dialog tap Allow. '
+          'The app asks again in 15 seconds.'
+    },
     'usb_not_android': {
       'vi': 'Thiết bị cắm vào không trả lời như điện thoại Android (có thể là hub, USB, hoặc máy kia chặn chế độ phụ kiện).',
       'en': 'The attached device did not answer like an Android phone (hub, USB stick, or accessory mode blocked).'

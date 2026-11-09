@@ -33,6 +33,27 @@
     <uses-feature android:name="android.hardware.usb.accessory" android:required="false" />
 
     <application>
+        <!-- USB cable mode: lets the user pick this app in the system "USB device/accessory attached" sheet, which
+             grants the USB permission. Invisible; brings the app to the front and finishes. -->
+        <activity
+            android:name="com.phonetransferpro.ptp_platform.usb.UsbAttachActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/ptp_usb_device_filter" />
+            <meta-data
+                android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
+                android:resource="@xml/ptp_usb_accessory_filter" />
+        </activity>
         <service
             android:name="com.phonetransferpro.ptp_platform.TransferService"
             android:exported="false"

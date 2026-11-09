@@ -81,3 +81,17 @@ Reported on a real phone (Xiaomi 2406APNFAG, Android 16). No cable log was captu
 - After 8 s of `waiting` with `seen=none`, the UI shows how to make one phone the USB host: the OTG toggle on OPPO/realme/OnePlus, "USB controlled by → This device", a data cable, and flipping the cable ends.
 
 **Still to verify on devices:** whether the switch to AOA works once one phone is host. The next cable log will show it: `seen=device`, then `switching`, `permission`, `connected`.
+
+## 2026-11-09 (evening) — second device report: cable plugged in during a Wi-Fi transfer, nothing happened
+
+Screenshots from the device test:
+- The transfer ran over Wi-Fi at about 9–11 MB/s, as shown in the app.
+- One phone showed the system sheet "Chọn ứng dụng cho thiết bị USB" offering only "Máy chủ MTP" and "Photos". The other phone showed "Chuyển tập tin USB bật".
+- So the cable did negotiate host and device roles.
+
+Causes found in the code:
+1. **"Điểm phát" never armed the cable.** Only `auto` waited for a cable, and "Điểm phát" became the default that afternoon. **Fixed:** `autoCable` covers `auto` and `hotspot`, and the QR carries the `usbauto` flag in both modes.
+2. **A missed permission dialog disabled the cable for the whole session.** The system app sheet can hide our `requestPermission` dialog. An unanswered AOA-device request threw `USB_PERMISSION_DENIED`, and auto mode then stopped trying. A non-AOA device was never asked again. **Fixed:** a refused or unanswered request is asked again after 15 s, and `seen=denied` is logged and shown with a hint.
+3. **The app was missing from the system sheet.** **Added:** `UsbAttachActivity` with device filters (AOA ids, MTP/PTP class 6, vendor class 255/255) and an accessory filter (our manufacturer/model). Picking "Chuyển dữ liệu" in that sheet grants the permission without a second dialog.
+
+Still not tested on devices.

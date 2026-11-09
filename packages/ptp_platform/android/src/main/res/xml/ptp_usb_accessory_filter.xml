@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only our own host's AOA identity (UsbTransport.MANUFACTURER / MODEL). -->
+<resources>
+    <usb-accessory manufacturer="PhoneTransferPro" model="ChuyenDuLieu" />
+</resources>

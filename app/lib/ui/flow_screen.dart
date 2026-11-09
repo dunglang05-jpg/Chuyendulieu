@@ -324,7 +324,7 @@ class _PathInfo extends StatelessWidget {
       note = S.t('path_cable_nodata');
     } else if (c.pathReason == PathReason.cableLost) {
       note = S.t('path_cable_lost');
-    } else if (c.transport == 'auto' && c.cableArmed && !c.onCable) {
+    } else if (c.autoCable && c.cableArmed && !c.onCable) {
       note = S.t('path_plug_hint');
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -361,6 +361,10 @@ class _UsbStatus extends StatelessWidget {
       if (c.usbNoHostHint) ...[
         const SizedBox(height: 12),
         ClayNote(text: S.t('usb_no_host'), icon: Icons.cable_rounded),
+      ],
+      if (c.usbSeen == 'denied' && c.usbState != 'connected') ...[
+        const SizedBox(height: 12),
+        ClayNote(text: S.t('usb_denied_hint'), icon: Icons.cable_rounded),
       ],
       if (c.usbSeen == 'not_android') ...[
         const SizedBox(height: 12),
@@ -744,10 +748,19 @@ class _TransferView extends StatelessWidget {
       if (c.transport != 'wifi') ...[
         const SizedBox(height: 18),
         ClaySurface(radius: 24, depth: 6, padding: const EdgeInsets.all(16), child: _PathInfo(c: c)),
+        // Auto mode: say why the cable is not taking over (device test 2026-11-09).
+        if (c.autoCable && !c.onCable && c.usbSeen == 'denied') ...[
+          const SizedBox(height: 12),
+          ClayNote(text: S.t('usb_denied_hint'), icon: Icons.cable_rounded),
+        ],
+        if (c.autoCable && !c.onCable && c.usbSeen == 'not_android') ...[
+          const SizedBox(height: 12),
+          ClayNote(text: S.t('usb_not_android'), icon: Icons.cable_rounded),
+        ],
       ],
       if (c.reconnecting && !c.switchingPath) ...[
         const SizedBox(height: 16),
-        ClayNote(text: S.t(c.transport == 'auto' ? 'reconnecting_auto' : 'reconnecting'), icon: Icons.wifi_off_rounded),
+        ClayNote(text: S.t(c.autoCable ? 'reconnecting_auto' : 'reconnecting'), icon: Icons.wifi_off_rounded),
       ],
       if (Platform.isAndroid && c.backgroundRestricted) ...[
         const SizedBox(height: 16),
