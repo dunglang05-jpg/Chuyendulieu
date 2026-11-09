@@ -458,6 +458,25 @@ class _SelectView extends StatelessWidget {
       Expanded(
         child: ListView(padding: const EdgeInsets.symmetric(vertical: 10), children: [
           for (final cat in categoryRegistry) ...[_categoryTile(context, cat, myPf, peerPf), const SizedBox(height: 14)],
+          ClaySurface(
+            radius: 24,
+            depth: 6,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            onTap: () => Navigator.of(context)
+                .push(MaterialPageRoute<void>(builder: (_) => AppsGuideScreen(myPlatform: myPf == 'ios' ? 'ios' : 'android'))),
+            child: Row(children: [
+              const ClayBlob(icon: Icons.apps_rounded, size: 44, pressed: true),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(S.t('apps_tile'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text(S.t('apps_tile_sub'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Clay.sub)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Clay.sub),
+            ]),
+          ),
+          const SizedBox(height: 14),
           if (Platform.isIOS) Text(S.t('keep_open_ios'), style: const TextStyle(fontSize: 12, color: Clay.sub)),
         ]),
       ),

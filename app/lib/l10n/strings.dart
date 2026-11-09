@@ -13,6 +13,19 @@ class S {
   static const Map<String, Map<String, String>> _s = {
     'app_title': {'vi': 'Chuyển dữ liệu', 'en': 'Chuyển dữ liệu'},
     'send': {'vi': 'Gửi dữ liệu', 'en': 'Send data'},
+    'apps_title': {'vi': 'Chuyển ứng dụng', 'en': 'Move apps'},
+    'apps_tile': {'vi': 'Chuyển ứng dụng', 'en': 'Move apps'},
+    'apps_tile_sub': {'vi': 'Bằng công cụ chính thức của Google / Apple', 'en': 'With Google\'s / Apple\'s official tool'},
+    'apps_why': {
+      'vi': 'Chỉ ứng dụng hệ thống của hãng (như Smart Switch) mới tự cài app không cần hỏi. Cách chính thức và tự động nhất là công cụ của Google/Apple lúc thiết lập máy mới — hướng dẫn bên dưới. Sau đó dùng Chuyển dữ liệu cho tài liệu và phần còn lại.',
+      'en': 'Only the phone maker\'s system apps (like Smart Switch) can install apps without asking. The official, automatic way is Google\'s / Apple\'s tool during the new phone\'s setup — steps below. Then use Chuyển dữ liệu for documents and the rest.'
+    },
+    'apps_moves': {'vi': 'Chuyển được', 'en': 'Moves'},
+    'apps_not_moves': {'vi': 'Không chuyển được', 'en': 'Does not move'},
+    'apps_after_setup': {
+      'vi': 'Máy mới đã thiết lập xong rồi? Các công cụ này thường chỉ chạy lúc thiết lập ban đầu (một số máy cho phép trong vài ngày đầu). Nếu không, phải khôi phục cài đặt gốc máy mới — hãy sao lưu trước — hoặc cài lại từng app từ CH Play / App Store.',
+      'en': 'Already set up the new phone? These tools usually run only during first setup (some phones allow it for a few days). Otherwise the new phone must be reset — back it up first — or reinstall apps one by one from the store.'
+    },
     'history_empty': {'vi': 'Chưa có lần chuyển nào', 'en': 'No transfers yet'},
     'cont_banner_title': {'vi': 'Có lần chuyển chưa xong', 'en': 'An unfinished transfer'},
     'cont_banner_body': {
