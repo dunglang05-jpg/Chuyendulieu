@@ -56,7 +56,8 @@ class FlowScreen extends StatefulWidget {
 
 class _FlowScreenState extends State<FlowScreen> {
   bool _scanning = false;
-  String _mode = 'wifi'; // wifi | auto | usb
+  // User request 2026-11-09: no shared Wi-Fi needed by default → "Điểm phát" on Android (iPhone cannot host it).
+  String _mode = Platform.isAndroid ? 'hotspot' : 'wifi'; // hotspot | wifi | auto | usb
   MigrationController get c => widget.controller;
 
   @override
@@ -154,7 +155,8 @@ class _ConnectChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Default: the new phone (receiver) shows the code, the old phone scans. Either way works.
-    final showFirst = role == 'receiver';
+    // iPhone cannot create the direct Wi-Fi, so there it scans the Android phone's code first.
+    final showFirst = role == 'receiver' && Platform.isAndroid;
     final show = ClayPrimaryButton(onPressed: onShow, icon: Icons.qr_code_2_rounded, label: S.t('show_qr'));
     final scan = ClayButton(onPressed: onScan, icon: Icons.qr_code_scanner_rounded, label: S.t('scan_qr'));
     return ListView(children: [
@@ -165,10 +167,10 @@ class _ConnectChoice extends StatelessWidget {
         // Cable modes are Android only: iPhone apps have no public USB API (docs/USB_C_OTG_RESEARCH.md).
         ClaySegmented<String>(
           options: [
+            ('hotspot', Icons.wifi_tethering_rounded, S.t('transport_hotspot')),
             ('wifi', Icons.wifi_rounded, S.t('transport_wifi')),
             ('auto', Icons.swap_horiz_rounded, S.t('transport_auto')),
             ('usb', Icons.usb_rounded, S.t('transport_usb')),
-            ('hotspot', Icons.wifi_tethering_rounded, S.t('transport_hotspot')),
           ],
           value: mode,
           onChanged: onTransport,
@@ -201,6 +203,8 @@ class _ConnectChoice extends StatelessWidget {
         ]),
       ),
       if (!Platform.isAndroid) ...[
+        const SizedBox(height: 10),
+        ClayNote(text: S.t('ios_scan_hint'), icon: Icons.wifi_tethering_rounded),
         const SizedBox(height: 10),
         Text(S.t('usb_ios_unsupported'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Clay.sub)),
       ],
@@ -278,7 +282,18 @@ class _QrViewState extends State<_QrView> {
       if (widget.c.transport == 'usb') ...[const SizedBox(height: 16), _UsbStatus(c: widget.c)],
       if (widget.c.transport == 'hotspot') ...[
         const SizedBox(height: 16),
-        ClayNote(text: S.t('hotspot_qr_note'), icon: Icons.wifi_tethering_rounded),
+        ClayNote(
+            text: S.t('hotspot_qr_note', {
+              'band': switch (widget.c.hotspotBand) { '5' => '5 GHz ', '2' => '2,4 GHz ', _ => '' }
+            }),
+            icon: Icons.wifi_tethering_rounded),
+        if (widget.c.hotspotBand == '5')
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+                onPressed: () => widget.c.showQr(widget.role, mode: 'hotspot', force24: true),
+                child: Text(S.t('hotspot_use_24'))),
+          ),
       ],
       if (loopbackOnly && widget.c.transport != 'usb') ...[
         const SizedBox(height: 16),

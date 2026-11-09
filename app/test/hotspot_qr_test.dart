@@ -40,13 +40,23 @@ void main() {
     expect(q.ap!.sec, 'wpa3');
   });
 
+  test('mode and band survive the round trip; older QR without them defaults to ap / unknown band', () {
+    final q = QrPayload.parse(
+        _qr(ap: const HotspotInfo('DIRECT-ab-ChuyenDL', 'abcd1234efgh', 'wpa2', mode: 'p2p', band: '5')).toUri());
+    expect(q.ap!.mode, 'p2p');
+    expect(q.ap!.band, '5');
+    final old = QrPayload.parse(_withAp({'s': 'AndroidShare_1', 'k': 'abcd1234', 'sec': 'wpa2'}));
+    expect(old.ap!.mode, 'ap');
+    expect(old.ap!.band, 'a');
+  });
+
   test('QR without the field (older app / plain Wi-Fi) has no hotspot', () {
     expect(QrPayload.parse(_qr().toUri()).ap, isNull);
   });
 
   test('largest allowed values still fit the 1024-char QR limit with 8 endpoints', () {
     final q = _qr(
-      ap: HotspotInfo('S' * 32, 'k' * 63, 'wpa2'),
+      ap: HotspotInfo('S' * 32, 'k' * 63, 'wpa2', mode: 'p2p', band: '5'),
       eps: List.generate(8, (i) => '192.168.100.10$i:65535'),
     );
     expect(q.toUri().length, lessThanOrEqualTo(1024));
@@ -64,6 +74,8 @@ void main() {
       {'s': 'ok', 'k': 'abcd\n1234', 'sec': 'wpa2'},
       {'s': 'a\u0000b', 'k': 'abcd1234', 'sec': 'wpa2'},
       {'s': 'ok', 'k': 'abcd1234', 'sec': 'wpa2', 'extra': 1},
+      {'s': 'ok', 'k': 'abcd1234', 'sec': 'wpa2', 'm': 'wifi'},
+      {'s': 'ok', 'k': 'abcd1234', 'sec': 'wpa2', 'b': '6'},
     ];
     for (final b in bad) {
       expect(() => QrPayload.parse(_withAp(b)), throwsA(isA<PtpException>()), reason: '$b');

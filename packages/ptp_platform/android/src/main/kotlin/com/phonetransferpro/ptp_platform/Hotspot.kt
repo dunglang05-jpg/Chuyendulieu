@@ -1,10 +1,13 @@
 // Phone Transfer Pro — phone-to-phone Wi-Fi without a router ("Điểm phát", like OPPO Clone Phone / Smart Switch).
 // NOT TESTED ON DEVICES (see docs/STATUS.md).
 //
-// Host: WifiManager.startLocalOnlyHotspot — an app-scoped hotspot with a system-generated name and password and no
-// Internet sharing. The name/password go into the pairing QR only (never logged).
-// Joiner: WifiNetworkSpecifier request (the system shows its own "connect to this device?" dialog), then the process is
-// bound to that network so the transfer socket uses the direct link and not the router / mobile data.
+// Host, first choice: a Wi-Fi Direct group (WifiP2pManager.createGroup) with a random name/password, on 5 GHz when this
+// phone supports it (setGroupOperatingBand), else on any band. Router Wi-Fi is not needed, only Wi-Fi switched on.
+// Host, fallback: WifiManager.startLocalOnlyHotspot (system-chosen name/password/band).
+// The name/password go into the pairing QR only (never logged). No Internet is shared.
+// Joiner (Android): Wi-Fi Direct group -> WifiP2pManager.connect with the name/password (no pairing dialog);
+// local-only hotspot -> WifiNetworkSpecifier (system dialog) + bindProcessToNetwork.
+// Joiner (iPhone, Swift side): joins either one as an ordinary WPA2 network.
 package com.phonetransferpro.ptp_platform
 
 import android.content.Context
@@ -15,6 +18,12 @@ import android.net.NetworkRequest
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
+import android.net.wifi.p2p.WifiP2pConfig
+import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pInfo
+import android.net.wifi.p2p.WifiP2pManager
+import android.content.pm.PackageManager
+import java.security.SecureRandom
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -30,10 +39,203 @@ class Hotspot(private val context: Context) {
     private var joinCallback: ConnectivityManager.NetworkCallback? = null
     private var joined: Network? = null
 
-    // ------------------------------------------------------------------ host
-    /** Starts the hotspot. Calls [done] exactly once with (info, null) or (null, errorCode). Main thread. */
-    fun start(done: (Map<String, Any?>?, String?) -> Unit) {
+    private val p2p: WifiP2pManager? get() =
+        if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT))
+            context.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager else null
+    private var channel: WifiP2pManager.Channel? = null
+    private var p2pHosting = false
+    private var p2pJoined = false
+    private var pollGen = 0
+
+    private fun ch(m: WifiP2pManager): WifiP2pManager.Channel =
+        channel ?: m.initialize(context, Looper.getMainLooper(), null).also { channel = it }
+
+    /** 5 GHz support of THIS phone (Wi-Fi Direct hosting and joining use it when true). */
+    val supports5Ghz: Boolean get() = try { wifi.is5GHzBandSupported } catch (_: Exception) { false }
+
+    // ------------------------------------------------------------------ host (public entry)
+    /**
+     * Creates the direct link. Order: Wi-Fi Direct on 5 GHz (if supported and not [force24]) -> Wi-Fi Direct on
+     * 2.4 GHz/any band -> local-only hotspot. Answers once with
+     * {ssid, psk, sec, mode: p2p|ap, band: 5|2|a, ips} or an error code. Main thread.
+     */
+    fun start(force24: Boolean, done: (Map<String, Any?>?, String?) -> Unit) {
         stop()
+        if (!wifi.isWifiEnabled) return done(null, "HOTSPOT_WIFI_OFF")
+        val m = p2p
+        if (m == null) return startLohs(done)
+        val first = if (!force24 && supports5Ghz) WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+            else if (force24) WifiP2pConfig.GROUP_OWNER_BAND_2GHZ else WifiP2pConfig.GROUP_OWNER_BAND_AUTO
+        startGroup(m, first) { info, err ->
+            if (info != null) return@startGroup done(info, null)
+            if (err == "HOTSPOT_PERMISSION") return@startGroup done(null, err)
+            if (first == WifiP2pConfig.GROUP_OWNER_BAND_5GHZ) {
+                // The phone could not open a 5 GHz group right now (e.g. radio busy): let the system pick.
+                startGroup(m, WifiP2pConfig.GROUP_OWNER_BAND_AUTO) { info2, err2 ->
+                    if (info2 != null) done(info2, null) else if (err2 == "HOTSPOT_PERMISSION") done(null, err2) else startLohs(done)
+                }
+            } else {
+                startLohs(done)
+            }
+        }
+    }
+
+    private fun startGroup(m: WifiP2pManager, band: Int, done: (Map<String, Any?>?, String?) -> Unit) {
+        val c = ch(m)
+        val name = "DIRECT-${random(2)}-ChuyenDL"
+        val pass = random(16)
+        val cfg = try {
+            WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(pass).setGroupOperatingBand(band).build()
+        } catch (e: Exception) {
+            return done(null, "HOTSPOT_FAILED")
+        }
+        val create = {
+            try {
+                m.createGroup(c, cfg, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                        p2pHosting = true
+                        waitForGroup(m, c, 40, name, pass, done)
+                    }
+
+                    override fun onFailure(reason: Int) {
+                        done(null, if (reason == WifiP2pManager.BUSY) "HOTSPOT_BUSY" else "HOTSPOT_FAILED")
+                    }
+                })
+            } catch (e: SecurityException) {
+                done(null, "HOTSPOT_PERMISSION")
+            }
+        }
+        // A group left over from an earlier session would make createGroup fail with BUSY.
+        try {
+            m.removeGroup(c, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() = create()
+                override fun onFailure(reason: Int) = create()
+            })
+        } catch (e: SecurityException) {
+            done(null, "HOTSPOT_PERMISSION")
+        }
+    }
+
+    private fun waitForGroup(m: WifiP2pManager, c: WifiP2pManager.Channel, triesLeft: Int, name: String, pass: String,
+                             done: (Map<String, Any?>?, String?) -> Unit) {
+        try {
+            m.requestGroupInfo(c) { g: WifiP2pGroup? ->
+                if (g != null && g.isGroupOwner && g.networkName == name) {
+                    m.requestConnectionInfo(c) { info: WifiP2pInfo? ->
+                        val ips = mutableListOf<String>()
+                        info?.groupOwnerAddress?.hostAddress?.let { ips.add(it) }
+                        ifaceAddresses(g.`interface`).forEach { if (it !in ips) ips.add(it) }
+                        val freq = if (Build.VERSION.SDK_INT >= 29) g.frequency else 0
+                        val bandTag = when {
+                            freq >= 4900 -> "5"
+                            freq in 2400..2500 -> "2"
+                            else -> "a"
+                        }
+                        done(mapOf("ssid" to name, "psk" to pass, "sec" to "wpa2", "mode" to "p2p", "band" to bandTag,
+                            "ips" to ips), null)
+                    }
+                } else if (triesLeft <= 0) {
+                    stop()
+                    done(null, "HOTSPOT_FAILED")
+                } else {
+                    main.postDelayed({ waitForGroup(m, c, triesLeft - 1, name, pass, done) }, 150)
+                }
+            }
+        } catch (e: SecurityException) {
+            done(null, "HOTSPOT_PERMISSION")
+        }
+    }
+
+    private fun ifaceAddresses(name: String?): List<String> = try {
+        if (name == null) emptyList() else NetworkInterface.getByName(name)?.inetAddresses?.toList()
+            ?.filterIsInstance<Inet4Address>()?.mapNotNull { it.hostAddress } ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    // ------------------------------------------------------------------ joiner (public entry)
+    /** [mode] p2p | ap; [band] 5 | 2 | a. Answers once with (host IPv4 or "", null) or (null, errorCode). Main thread. */
+    fun join(ssid: String, psk: String, sec: String, mode: String, band: String, timeoutMs: Int,
+             done: (String?, String?) -> Unit) {
+        leave()
+        if (!wifi.isWifiEnabled) return done(null, "HOTSPOT_WIFI_OFF")
+        if (band == "5" && !supports5Ghz) return done(null, "HOTSPOT_NO_5GHZ")
+        val m = p2p
+        if (mode == "p2p" && m != null) joinGroup(m, ssid, psk, band, timeoutMs, done)
+        else joinAp(ssid, psk, sec, timeoutMs, done)
+    }
+
+    private fun joinGroup(m: WifiP2pManager, ssid: String, psk: String, band: String, timeoutMs: Int,
+                          done: (String?, String?) -> Unit) {
+        val c = ch(m)
+        val cfg = try {
+            WifiP2pConfig.Builder().setNetworkName(ssid).setPassphrase(psk).setGroupOperatingBand(
+                when (band) {
+                    "5" -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+                    "2" -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                    else -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
+                }).build()
+        } catch (e: Exception) {
+            return done(null, "HOTSPOT_JOIN_FAILED")
+        }
+        var answered = false
+        fun answer(v: String?, err: String?) {
+            if (!answered) {
+                answered = true
+                done(v, err)
+            }
+        }
+        val gen = ++pollGen
+        val deadline = System.currentTimeMillis() + timeoutMs
+        fun poll() {
+            if (gen != pollGen || answered) return
+            try {
+                m.requestConnectionInfo(c) { info: WifiP2pInfo? ->
+                    val owner = info?.groupOwnerAddress?.hostAddress
+                    if (info != null && info.groupFormed && !info.isGroupOwner && owner != null) {
+                        p2pJoined = true
+                        answer(owner, null)
+                    } else if (System.currentTimeMillis() > deadline) {
+                        try { m.cancelConnect(c, null) } catch (_: Exception) {}
+                        answer(null, "HOTSPOT_JOIN_FAILED")
+                    } else {
+                        main.postDelayed({ poll() }, 400)
+                    }
+                }
+            } catch (e: SecurityException) {
+                answer(null, "HOTSPOT_PERMISSION")
+            }
+        }
+        val connect = {
+            try {
+                // Name + password are known, so the system joins without a pairing dialog on either phone.
+                m.connect(c, cfg, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() = poll()
+                    override fun onFailure(reason: Int) = answer(null, "HOTSPOT_JOIN_FAILED")
+                })
+            } catch (e: SecurityException) {
+                answer(null, "HOTSPOT_PERMISSION")
+            }
+        }
+        try {
+            m.removeGroup(c, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() = connect()
+                override fun onFailure(reason: Int) = connect()
+            })
+        } catch (e: SecurityException) {
+            answer(null, "HOTSPOT_PERMISSION")
+        }
+    }
+
+    private fun random(n: Int): String {
+        val abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+        val r = SecureRandom()
+        return String(CharArray(n) { abc[r.nextInt(abc.length)] })
+    }
+
+    // ------------------------------------------------------------------ host
+    /** Fallback host: local-only hotspot. Calls [done] exactly once with (info, null) or (null, errorCode). */
+    private fun startLohs(done: (Map<String, Any?>?, String?) -> Unit) {
         var answered = false
         fun answer(v: Map<String, Any?>?, err: String?) {
             if (!answered) {
@@ -81,9 +283,16 @@ class Hotspot(private val context: Context) {
         } catch (_: Exception) {
         }
         reservation = null
+        val m = p2p
+        val c = channel
+        if (p2pHosting && m != null && c != null) {
+            try {
+                m.removeGroup(c, null)
+            } catch (_: Exception) {
+            }
+        }
+        p2pHosting = false
     }
-
-    val hosting get() = reservation != null
 
     private fun describe(r: WifiManager.LocalOnlyHotspotReservation): Map<String, Any?>? {
         if (Build.VERSION.SDK_INT >= 30) {
@@ -99,7 +308,7 @@ class Hotspot(private val context: Context) {
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> "wpa3"
                 else -> "wpa2" // WPA2 and WPA3 transition mode both accept a WPA2 client
             }
-            return mapOf("ssid" to ssid, "psk" to psk, "sec" to sec) // band is not public API; the OS picks it
+            return mapOf("ssid" to ssid, "psk" to psk, "sec" to sec, "mode" to "ap", "band" to "a") // the OS picks the band
         }
         @Suppress("DEPRECATION")
         val c = r.wifiConfiguration ?: return null
@@ -108,7 +317,7 @@ class Hotspot(private val context: Context) {
         @Suppress("DEPRECATION")
         val psk = c.preSharedKey?.removeSurrounding("\"")
         if (ssid.isNullOrEmpty() || psk.isNullOrEmpty()) return null
-        return mapOf("ssid" to ssid, "psk" to psk, "sec" to "wpa2")
+        return mapOf("ssid" to ssid, "psk" to psk, "sec" to "wpa2", "mode" to "ap", "band" to "a")
     }
 
     private fun waitForApAddress(triesLeft: Int, done: (List<String>) -> Unit) {
@@ -132,8 +341,7 @@ class Hotspot(private val context: Context) {
      * Asks the system to connect to the host's hotspot (it shows its own confirmation dialog), then binds this process
      * to that network. Calls [done] once with (gatewayIp or "", null) or (null, errorCode). Main thread.
      */
-    fun join(ssid: String, psk: String, sec: String, timeoutMs: Int, done: (String?, String?) -> Unit) {
-        leave()
+    private fun joinAp(ssid: String, psk: String, sec: String, timeoutMs: Int, done: (String?, String?) -> Unit) {
         var answered = false
         fun answer(v: String?, err: String?) {
             if (!answered) {
@@ -178,6 +386,16 @@ class Hotspot(private val context: Context) {
     }
 
     fun leave() {
+        pollGen++
+        val m = p2p
+        val c = channel
+        if (p2pJoined && m != null && c != null) {
+            try {
+                m.removeGroup(c, null)
+            } catch (_: Exception) {
+            }
+        }
+        p2pJoined = false
         joinCallback?.let {
             try {
                 cm.unregisterNetworkCallback(it)

@@ -51,15 +51,17 @@ const usbAutoFlag = 'usbauto';
 
 /// Host's app-only hotspot (Android LocalOnlyHotspot): random name/password created by the system for this session.
 class HotspotInfo {
-  const HotspotInfo(this.ssid, this.psk, this.sec);
+  const HotspotInfo(this.ssid, this.psk, this.sec, {this.mode = 'ap', this.band = 'a'});
   final String ssid;
   final String psk;
   final String sec; // wpa2 | wpa3
+  final String mode; // p2p (Wi-Fi Direct group) | ap (local-only hotspot)
+  final String band; // 5 | 2 | a (unknown / system choice)
 
-  Map<String, Object?> toJson() => {'s': ssid, 'k': psk, 'sec': sec};
+  Map<String, Object?> toJson() => {'s': ssid, 'k': psk, 'sec': sec, 'm': mode, 'b': band};
 
   static HotspotInfo parse(Object? o) {
-    if (o is! Map || !{'s', 'k', 'sec'}.containsAll(o.keys)) {
+    if (o is! Map || !{'s', 'k', 'sec', 'm', 'b'}.containsAll(o.keys)) {
       throw PtpException(PtpErrorCode.protocolError, 'bad hotspot info');
     }
     final s = o['s'];
@@ -72,7 +74,12 @@ class HotspotInfo {
       throw PtpException(PtpErrorCode.protocolError, 'bad hotspot password');
     }
     if (sec != 'wpa2' && sec != 'wpa3') throw PtpException(PtpErrorCode.protocolError, 'bad hotspot security');
-    return HotspotInfo(s, k, sec as String);
+    final m = o['m'] ?? 'ap';
+    final b = o['b'] ?? 'a';
+    if ((m != 'p2p' && m != 'ap') || (b != '5' && b != '2' && b != 'a')) {
+      throw PtpException(PtpErrorCode.protocolError, 'bad hotspot mode/band');
+    }
+    return HotspotInfo(s, k, sec as String, mode: m as String, band: b as String);
   }
 
   @override

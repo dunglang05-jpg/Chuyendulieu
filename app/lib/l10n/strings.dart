@@ -122,7 +122,7 @@ class S {
     'report_action': {'vi': '{n} mục cần bạn thao tác', 'en': '{n} items need your action'},
     'delete_partial': {'vi': 'Xóa dữ liệu tạm', 'en': 'Delete partial data'},
     'finish': {'vi': 'Xong', 'en': 'Done'},
-    'transport_wifi': {'vi': 'Wi-Fi / mạng', 'en': 'Wi-Fi / LAN'},
+    'transport_wifi': {'vi': 'Wi-Fi chung', 'en': 'Same Wi-Fi'},
     'transport_usb': {'vi': 'Chỉ cáp', 'en': 'Cable only'},
     'transport_auto': {'vi': 'Tự động', 'en': 'Auto'},
     'auto_hint': {
@@ -178,14 +178,36 @@ class S {
     'usb_err_generic': {'vi': 'Lỗi cáp USB ({code}).', 'en': 'USB cable error ({code}).'},
     'transport_hotspot': {'vi': 'Điểm phát', 'en': 'Direct'},
     'hotspot_hint': {
-      'vi': 'Không cần router: máy hiện mã sẽ tự phát một Wi-Fi riêng, máy quét mã tự vào mạng đó. '
-          'Máy hiện mã phải là Android. Thử nghiệm — chưa kiểm tra trên máy thật.',
-      'en': 'No router needed: the phone showing the code creates its own Wi-Fi and the scanning phone joins it. '
-          'The phone showing the code must be Android. Experimental — not yet tested on real phones.'
+      'vi': 'Không cần chung Wi-Fi: chỉ cần bật Wi-Fi trên hai máy. Máy hiện mã tự phát Wi-Fi riêng (tự dùng 5 GHz '
+          'nếu máy hỗ trợ), máy quét mã tự vào. Máy hiện mã phải là Android. Thử nghiệm — chưa kiểm tra trên máy thật.',
+      'en': 'No shared Wi-Fi needed, just Wi-Fi switched on. The phone showing the code creates its own Wi-Fi (5 GHz '
+          'when supported) and the scanning phone joins it. The phone showing the code must be Android. '
+          'Experimental — not yet tested on real phones.'
     },
     'hotspot_qr_note': {
-      'vi': 'Đang phát Wi-Fi riêng cho lần chuyển này. Máy kia sẽ hỏi “kết nối với thiết bị này?” — hãy đồng ý.',
-      'en': 'Sharing a private Wi-Fi for this transfer. The other phone will ask to connect — accept it.'
+      'vi': 'Đang phát Wi-Fi riêng {band}cho lần chuyển này. Máy kia chỉ cần bật Wi-Fi và quét mã.',
+      'en': 'Sharing a private {band}Wi-Fi for this transfer. The other phone only needs Wi-Fi on and to scan.'
+    },
+    'hotspot_use_24': {'vi': 'Máy kia không vào được? Dùng 2,4 GHz', 'en': 'Other phone can’t join? Use 2.4 GHz'},
+    'ios_scan_hint': {
+      'vi': 'Muốn chuyển không cần chung Wi-Fi: để máy Android hiện mã (chế độ Điểm phát), iPhone quét mã.',
+      'en': 'To transfer without shared Wi-Fi, let the Android phone show the code (Direct mode) and scan it here.'
+    },
+    'hs_err_HOTSPOT_WIFI_OFF': {
+      'vi': 'Hãy bật Wi-Fi (không cần vào mạng nào) rồi thử lại.',
+      'en': 'Turn Wi-Fi on (no need to join any network) and try again.'
+    },
+    'hs_err_HOTSPOT_NO_5GHZ': {
+      'vi': 'Máy này không hỗ trợ Wi-Fi 5 GHz. Trên máy hiện mã, bấm “Dùng 2,4 GHz” rồi quét lại.',
+      'en': 'This phone has no 5 GHz Wi-Fi. On the other phone tap “Use 2.4 GHz”, then scan again.'
+    },
+    'hs_err_HOTSPOT_BUSY': {
+      'vi': 'Wi-Fi của máy đang bận (có thể đang dùng Wi-Fi Direct/chia sẻ màn hình). Tắt rồi thử lại.',
+      'en': 'Wi-Fi is busy (Wi-Fi Direct or screen sharing may be in use). Stop it and try again.'
+    },
+    'hs_err_HOTSPOT_FAILED': {
+      'vi': 'Không tạo được Wi-Fi riêng. Hãy tắt/bật Wi-Fi rồi thử lại, hoặc chọn “Wi-Fi chung”.',
+      'en': 'Could not create the direct Wi-Fi. Toggle Wi-Fi and retry, or choose “Same Wi-Fi”.'
     },
     'hotspot_manual_title': {'vi': 'Vào Wi-Fi của máy kia', 'en': 'Join the other phone’s Wi-Fi'},
     'hotspot_manual_body': {

@@ -191,10 +191,11 @@ class QrPayload:
             raise PtpError("PROTOCOL_ERROR", "bad flags")
         if "ap" in obj:  # host's app-only hotspot; validated like the app does, then ignored (the PC is on the LAN)
             ap = obj["ap"]
-            if (not isinstance(ap, dict) or set(ap) != {"s", "k", "sec"} or not isinstance(ap["s"], str)
+            if (not isinstance(ap, dict) or not {"s", "k", "sec"} <= set(ap) <= {"s", "k", "sec", "m", "b"} or not isinstance(ap["s"], str)
                     or not 1 <= len(ap["s"].encode()) <= 32 or not isinstance(ap["k"], str)
                     or not 8 <= len(ap["k"]) <= 63 or any(not 0x20 <= ord(c) <= 0x7e for c in ap["k"])
-                    or ap["sec"] not in ("wpa2", "wpa3")):
+                    or ap["sec"] not in ("wpa2", "wpa3") or ap.get("m", "ap") not in ("p2p", "ap")
+                    or ap.get("b", "a") not in ("5", "2", "a")):
                 raise PtpError("PROTOCOL_ERROR", "bad hotspot info")
         return QrPayload(obj["v"], unb64u(obj["sid"], 16), obj["exp"], ep, unb64u(obj["fp"], 32),
                          obj["role"], obj["pf"], flags)

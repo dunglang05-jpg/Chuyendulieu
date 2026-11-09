@@ -192,7 +192,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 result.success(null)
             }
             // Direct phone-to-phone Wi-Fi ("Điểm phát"). NOT TESTED ON DEVICES. Name/password are never logged.
-            "hotspotStart" -> hotspot.start { info, err ->
+            "hotspotStart" -> hotspot.start(call.argument<Boolean>("force24") ?: false) { info, err ->
                 if (err != null) result.error(err, err, null) else result.success(info)
             }
             "hotspotStop" -> {
@@ -203,6 +203,8 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 call.argument<String>("ssid")!!,
                 call.argument<String>("psk")!!,
                 call.argument<String>("sec") ?: "wpa2",
+                call.argument<String>("mode") ?: "ap",
+                call.argument<String>("band") ?: "a",
                 (call.argument<Int>("timeoutMs") ?: 60_000).coerceIn(5_000, 180_000),
             ) { gw, err -> if (err != null) result.error(err, err, null) else result.success(gw) }
             "hotspotLeave" -> {

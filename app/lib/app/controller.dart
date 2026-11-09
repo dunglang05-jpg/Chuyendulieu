@@ -98,6 +98,9 @@ class MigrationController extends ChangeNotifier {
 
   /// iPhone without the Hotspot Configuration entitlement: show name/password for a manual join, then continue.
   HotspotInfo? hotspotManual;
+
+  /// Band of the direct link this phone created or joined: '5' | '2' | 'a' (unknown). Null when not in that mode.
+  String? hotspotBand;
   String? _manualUri;
 
   /// Router Wi-Fi link rate below [slowWifiMbps] (Mbps) on THIS phone: shown as a hint during the transfer
@@ -392,7 +395,7 @@ class MigrationController extends ChangeNotifier {
   // ------------------------------------------------------------------ pairing
   /// This device shows the QR. [myRole] is its data role.
   /// [mode]: 'wifi' | 'usb' | 'auto'; null keeps the current choice (e.g. "new code").
-  Future<void> showQr(String myRole, {String? mode}) async {
+  Future<void> showQr(String myRole, {String? mode, bool force24 = false}) async {
     final m = mode ?? transport;
     await _closePrevious();
     _resetSession(myRole);
@@ -404,7 +407,7 @@ class MigrationController extends ChangeNotifier {
       if (usb) await _requireUsb();
       HotspotInfo? ap;
       var apHosts = const <String>[];
-      if (m == 'hotspot') (ap, apHosts) = await _startHotspot();
+      if (m == 'hotspot') (ap, apHosts) = await _startHotspot(force24: force24);
       final cont = await _contCandidatesForWorker();
       await _startWorker();
       _isHost = true;
@@ -502,16 +505,17 @@ class MigrationController extends ChangeNotifier {
   }
 
   /// Host side of "Điểm phát": permission in context, then an app-only hotspot (Android).
-  Future<(HotspotInfo, List<String>)> _startHotspot() async {
+  Future<(HotspotInfo, List<String>)> _startHotspot({bool force24 = false}) async {
     if (!Platform.isAndroid) throw PtpException(PtpErrorCode.platformRestriction, 'HOTSPOT_UNSUPPORTED');
     await _requireNearbyWifi();
     try {
-      final r = await PtpPlatform.hotspotStart();
+      final r = await PtpPlatform.hotspotStart(force24: force24);
       _hotspotOn = true;
-      final ap = HotspotInfo.parse({'s': r['ssid'], 'k': r['psk'], 'sec': r['sec']});
+      final ap = HotspotInfo.parse({'s': r['ssid'], 'k': r['psk'], 'sec': r['sec'], 'm': r['mode'], 'b': r['band']});
+      hotspotBand = ap.band;
       final ips = ((r['ips'] as List<Object?>?) ?? const []).whereType<String>().toList();
       // Never log the name or password.
-      _log.event('hotspot', {'state': 'started', 'count': ips.length});
+      _log.event('hotspot', {'state': 'started', 'status': '${ap.mode}_${ap.band}', 'count': ips.length});
       return (ap, ips);
     } on PlatformException catch (e) {
       _log.event('hotspot', {'state': 'failed', 'code': e.code});
@@ -523,9 +527,10 @@ class MigrationController extends ChangeNotifier {
   Future<String?> _joinHotspot(HotspotInfo ap) async {
     if (Platform.isAndroid) await _requireNearbyWifi();
     try {
-      final gw = await PtpPlatform.hotspotJoin(ap.ssid, ap.psk, ap.sec);
+      final gw = await PtpPlatform.hotspotJoin(ap.ssid, ap.psk, ap.sec, mode: ap.mode, band: ap.band);
       _hotspotJoined = true;
-      _log.event('hotspot', {'state': 'joined'});
+      hotspotBand = ap.band;
+      _log.event('hotspot', {'state': 'joined', 'status': '${ap.mode}_${ap.band}'});
       return gw;
     } on PlatformException catch (e) {
       _log.event('hotspot', {'state': 'join_failed', 'code': e.code});
@@ -1333,6 +1338,7 @@ class MigrationController extends ChangeNotifier {
     _wifiQr = null;
     hotspotManual = null;
     _manualUri = null;
+    hotspotBand = null;
     slowWifiMbps = null;
     _policy.reset();
     usbState = null;

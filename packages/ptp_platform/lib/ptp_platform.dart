@@ -143,18 +143,24 @@ class PtpPlatform {
   static Future<void> vaultDelete(String name) => _call<void>('vaultDelete', {'name': name});
 
   /// "Điểm phát" host (Android only): app-scoped hotspot without Internet sharing.
-  /// Returns {ssid, psk, sec: wpa2|wpa3, ips: [AP IPv4]}. Throws PlatformException with codes
+  /// Wi-Fi Direct group on 5 GHz when this phone supports it (2.4 GHz with [force24]), else a local-only hotspot.
+  /// Returns {ssid, psk, sec: wpa2|wpa3, mode: p2p|ap, band: 5|2|a, ips: [host IPv4]}. Also HOTSPOT_WIFI_OFF,
+  /// HOTSPOT_BUSY. Throws PlatformException with codes
   /// HOTSPOT_PERMISSION | HOTSPOT_INCOMPATIBLE_MODE | HOTSPOT_DISALLOWED | HOTSPOT_NO_CHANNEL | HOTSPOT_FAILED |
   /// HOTSPOT_UNSUPPORTED (iOS). The name/password must never be logged.
-  static Future<Map<String, Object?>> hotspotStart() async => Map<String, Object?>.from(await _call<Map>('hotspotStart'));
+  static Future<Map<String, Object?>> hotspotStart({bool force24 = false}) async =>
+      Map<String, Object?>.from(await _call<Map>('hotspotStart', {'force24': force24}));
 
   static Future<void> hotspotStop() => _call<void>('hotspotStop');
 
   /// "Điểm phát" joiner: connects to the host's hotspot (system dialog) and routes this app's sockets over it.
   /// Returns the host's gateway IPv4 when known, else ''. Codes: HOTSPOT_JOIN_FAILED | HOTSPOT_JOIN_DENIED |
-  /// HOTSPOT_PERMISSION.
-  static Future<String> hotspotJoin(String ssid, String psk, String sec, {int timeoutMs = 60000}) async =>
-      (await _call<String?>('hotspotJoin', {'ssid': ssid, 'psk': psk, 'sec': sec, 'timeoutMs': timeoutMs})) ?? '';
+  /// HOTSPOT_PERMISSION | HOTSPOT_WIFI_OFF | HOTSPOT_NO_5GHZ. [mode]/[band] come from the QR.
+  static Future<String> hotspotJoin(String ssid, String psk, String sec,
+          {String mode = 'ap', String band = 'a', int timeoutMs = 60000}) async =>
+      (await _call<String?>('hotspotJoin',
+          {'ssid': ssid, 'psk': psk, 'sec': sec, 'mode': mode, 'band': band, 'timeoutMs': timeoutMs})) ??
+      '';
 
   static Future<void> hotspotLeave() => _call<void>('hotspotLeave');
 

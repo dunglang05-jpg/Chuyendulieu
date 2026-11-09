@@ -66,7 +66,9 @@
       "properties": {
         "s": {"type": "string", "minLength": 1, "maxLength": 32},
         "k": {"type": "string", "minLength": 8, "maxLength": 63, "pattern": "^[\\x20-\\x7e]+$"},
-        "sec": {"enum": ["wpa2", "wpa3"]}
+        "sec": {"enum": ["wpa2", "wpa3"]},
+        "m": {"description": "p2p = Wi-Fi Direct group, ap = local-only hotspot", "enum": ["p2p", "ap"]},
+        "b": {"description": "band of the link: 5 GHz, 2.4 GHz or unknown", "enum": ["5", "2", "a"]}
       }
     }
   }
