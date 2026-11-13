@@ -13,6 +13,7 @@ import '../core/protocol/errors.dart';
 import '../core/transfer/path_policy.dart';
 import '../l10n/strings.dart';
 import 'clay.dart';
+import 'app_picker.dart';
 import 'info_screens.dart';
 
 String fmtBytes(int b) {
@@ -578,8 +579,18 @@ class _SelectView extends StatelessWidget {
     } else {
       subtitle = statusLabel(cat.forPlatform(myPf).export);
     }
+    Future<void> pickApps() async {
+      if (!selected) await c.selectCategory('apps');
+      if (!context.mounted || c.appsCatalog.isEmpty) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AppPickerScreen(c: c)));
+    }
+
     void toggle() {
       if (!inPlan) return;
+      if (cat.id == 'apps') {
+        unawaited(pickApps()); // tapping again edits the choice instead of clearing it
+        return;
+      }
       if (selected) {
         c.clearCategory(cat.id);
       } else {

@@ -832,6 +832,20 @@ class MigrationController extends ChangeNotifier {
     if (perm == 'granted' || perm == 'limited') {
       selection[category] = await PtpPlatform.scan(category);
       _log.event('scan', {'category': category, 'count': selection[category]!.length});
+      if (category == 'apps') appsCatalog = List.of(selection[category]!);
+    }
+    notifyListeners();
+  }
+
+  /// Installed apps found on this phone (sender, Android); the user picks a subset in the app picker.
+  List<SourceItem> appsCatalog = const [];
+
+  void setAppSelection(Set<String> ids) {
+    final picked = appsCatalog.where((a) => ids.contains(a.id)).toList();
+    if (picked.isEmpty) {
+      selection.remove('apps');
+    } else {
+      selection['apps'] = picked;
     }
     notifyListeners();
   }
