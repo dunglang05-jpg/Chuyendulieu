@@ -1122,7 +1122,10 @@ class MigrationController extends ChangeNotifier {
       }
       _importQueue = _importQueue.then((_) async {
         try {
-          final r = await PtpPlatform.importFile(e.value, entry.category, p.basename(entry.path), entry.mime);
+          // "files": keep the folder layout (relPath "Bộ nhớ/<dir>/<name>").
+          final dir = p.posix.dirname(entry.path);
+          final r = await PtpPlatform.importFile(e.value, entry.category, p.basename(entry.path), entry.mime,
+              subdir: entry.category == 'files' && dir != '.' ? dir : null);
           imports.add(ImportOutcome(entry.category, entry.path, r.status, r.location, r.message));
           _log.event('import', {'category': entry.category, 'status': r.status});
         } catch (_) {

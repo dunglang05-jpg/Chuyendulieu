@@ -43,7 +43,7 @@ HANDSHAKE_TIMEOUT = 20
 CONFIRM_TIMEOUT = 120
 IDLE_TIMEOUT = 60
 MAX_AUTH_FAILURES = 5
-CATEGORIES = ("contacts", "photos", "videos", "audio", "documents", "calendar", "apps")
+CATEGORIES = ("contacts", "photos", "videos", "audio", "documents", "calendar", "apps", "files")
 PLATFORMS = ("android", "ios", "desktop_reference")
 
 ERROR_CODES = frozenset(

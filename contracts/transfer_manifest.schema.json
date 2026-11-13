@@ -67,7 +67,8 @@
               "audio",
               "documents",
               "calendar",
-              "apps"
+              "apps",
+              "files"
             ]
           },
           "sha256": {

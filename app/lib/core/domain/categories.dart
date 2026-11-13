@@ -70,6 +70,15 @@ const List<CategoryInfo> categoryRegistry = [
         'iOS không cho ứng dụng khác đọc/ghi thư viện Nhạc. Chỉ gửi tệp bạn chọn; khi nhận, tệp nằm trong ứng dụng Tệp.'),
   ),
   CategoryInfo(
+    'files', 'Toàn bộ tệp', 'All files',
+    PlatformSupport(SupportStatus.permissionRequired, SupportStatus.supported,
+        'Mọi tệp trong bộ nhớ chung (Download, Documents, tệp Zalo/WhatsApp lưu ra ngoài…), trừ ảnh/video/nhạc '
+            '(đã có mục riêng). Cần bật “Quyền truy cập vào mọi tệp” (Android 11+). Không đọc được dữ liệu riêng '
+            'của ứng dụng. Máy nhận lưu vào Download/PhoneTransferPro/Bộ nhớ. Thử nghiệm, chưa kiểm tra trên máy thật.'),
+    PlatformSupport(SupportStatus.unsupported, SupportStatus.supported,
+        'iPhone không cho đọc tệp của ứng dụng khác; khi nhận, tệp được lưu vào ứng dụng Tệp.'),
+  ),
+  CategoryInfo(
     'apps', 'Ứng dụng', 'Apps',
     PlatformSupport(SupportStatus.supported, SupportStatus.officialFlow,
         'Chỉ gửi tệp cài đặt (APK) của ứng dụng bạn đã cài — không có dữ liệu bên trong ứng dụng (tin nhắn, đăng nhập). '

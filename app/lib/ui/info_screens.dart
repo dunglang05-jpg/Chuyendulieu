@@ -29,6 +29,7 @@ IconData _categoryIcon(String id) => switch (id) {
       'documents' => Icons.description_outlined,
       'audio' => Icons.music_note_outlined,
       'apps' => Icons.apps_rounded,
+      'files' => Icons.folder_copy_outlined,
       'calendar' => Icons.event_outlined,
       _ => Icons.folder_outlined,
     };

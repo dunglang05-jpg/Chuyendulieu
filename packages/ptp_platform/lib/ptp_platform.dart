@@ -84,9 +84,11 @@ class PtpPlatform {
 
   static Future<int> freeBytes(String path) async => await _call<int>('freeBytes', {'path': path});
 
-  static Future<ImportResult> importFile(String path, String category, String displayName, String? mime) async =>
+  /// [subdir]: folder to recreate under the destination (category "files": the sender's storage layout).
+  static Future<ImportResult> importFile(String path, String category, String displayName, String? mime,
+          {String? subdir}) async =>
       ImportResult(Map<String, Object?>.from(await _call<Map>('importFile',
-          {'path': path, 'category': category, 'name': displayName, 'mime': mime})));
+          {'path': path, 'category': category, 'name': displayName, 'mime': mime, 'subdir': subdir})));
 
   /// Android: foreground service (dataSync) + wake lock. iOS: idle timer off + short background task.
   static Future<void> setTransferActive(bool active) => _call<void>('setTransferActive', {'active': active});

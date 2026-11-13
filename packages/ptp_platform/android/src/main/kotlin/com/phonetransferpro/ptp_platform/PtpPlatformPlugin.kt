@@ -43,6 +43,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     private lateinit var vault: SecureVault
     private lateinit var hotspot: Hotspot
     private lateinit var apps: AppsAdapter
+    private lateinit var files: FilesAdapter
 
     private var pendingPermission: Pair<Int, MethodChannel.Result>? = null
     private var pendingPermissionCategory: String? = null
@@ -57,6 +58,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         usbTransport = UsbTransport(context)
         hotspot = Hotspot(context)
         apps = AppsAdapter(context)
+        files = FilesAdapter(context)
         channel = MethodChannel(b.binaryMessenger, "com.phonetransferpro/ptp_platform")
         channel.setMethodCallHandler(this)
     }
@@ -111,6 +113,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 when (cat) {
                     "contacts" -> contacts.scan()
                     "apps" -> apps.scan()
+                    "files" -> files.scan(limit)
                     else -> media.scan(cat, limit)
                 }
             }
@@ -118,6 +121,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
             "openForRead" -> io(result) {
                 val id = call.argument<String>("id")!!
                 if (id == ContactsAdapter.ALL_CONTACTS_ID) media.openFile(contacts.exportAll(File(context.cacheDir, "export")))
+                else if (id.startsWith(FilesAdapter.PREFIX)) media.openFile(files.resolve(id))
                 else if (id.startsWith(AppsAdapter.PREFIX)) media.openFile(apps.pack(id, File(context.cacheDir, "stage")), deleteOnClose = true)
                 else media.openForRead(Uri.parse(id))
             }
@@ -141,7 +145,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                             }
                         }
                     }
-                    else -> media.importFile(File(path), cat, name, mime)
+                    else -> media.importFile(File(path), cat, name, mime, call.argument<String>("subdir"))
                 }
             }
             // Receive straight into MediaStore (audit P1-7). NOT TESTED ON DEVICES.
@@ -266,6 +270,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         }
         if (cat == "contacts") return if (granted(Manifest.permission.READ_CONTACTS)) "granted" else "denied"
         if (cat == "apps") return "granted" // APK files of installed apps need no runtime permission
+        if (cat == "files") return if (files.granted) "granted" else if (Build.VERSION.SDK_INT >= 30) "denied" else "unsupported"
         if (cat == "nearbyWifi") return if (nearbyWifiPermissions().all { granted(it) }) "granted" else "denied"
         val perms = mediaPermissions(cat)
         if (perms.isEmpty()) return "not_applicable"
@@ -275,11 +280,12 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     }
 
     private fun probe(): Map<String, Any?> {
-        val cats = listOf("photos", "videos", "audio", "documents", "contacts", "calendar", "apps")
+        val cats = listOf("photos", "videos", "audio", "documents", "contacts", "calendar", "apps", "files")
         val perms = cats.associateWith { permissionState(it) }
         fun exportStatus(c: String) = when (c) {
             "calendar" -> "unsupported"
             "documents", "apps" -> "supported"
+            "files" -> if (Build.VERSION.SDK_INT < 30) "partial" else if (perms[c] == "granted") "supported" else "permission_required"
             else -> if (perms[c] == "granted") "supported" else if (perms[c] == "limited") "partial" else "permission_required"
         }
         fun importStatus(c: String) = when (c) {
@@ -288,7 +294,9 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
             else -> "supported" // writing into our own MediaStore entries needs no permission on API 29+
         }
         val categories = cats.map {
-            mapOf("id" to it, "export" to (it != "calendar"), "import" to (it != "calendar"),
+            // "files" needs Android 11+ All files access to READ; receiving works on every version.
+            val export = it != "calendar" && !(it == "files" && Build.VERSION.SDK_INT < 30)
+            mapOf("id" to it, "export" to export, "import" to (it != "calendar"),
                 "status" to if (exportStatus(it) == "unsupported") "unsupported" else exportStatus(it),
                 "importStatus" to importStatus(it))
         }
@@ -308,6 +316,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     private fun requestPermission(cat: String, forImport: Boolean, result: MethodChannel.Result) {
         val act = activity ?: return result.error("INTERNAL_ERROR", "no activity", null)
         if (forImport && cat != "contacts") return result.success("granted") // own MediaStore inserts need none
+        if (cat == "files") return requestAllFiles(act, result)
         val perms = when (cat) {
             "notifications" -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
             "nearbyWifi" -> nearbyWifiPermissions()
@@ -323,6 +332,22 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
         pendingPermission = code to result
         pendingPermissionCategory = cat
         ActivityCompat.requestPermissions(act, perms.toTypedArray(), code)
+    }
+
+    /** "All files access" is a Settings toggle, not a runtime dialog: open it and report when the user comes back. */
+    private var pendingAllFiles: MethodChannel.Result? = null
+
+    private fun requestAllFiles(act: Activity, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < 30) return result.success("unsupported")
+        if (files.granted) return result.success("granted")
+        pendingAllFiles?.success(permissionState("files"))
+        pendingAllFiles = result
+        try {
+            act.startActivityForResult(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:${context.packageName}")), ALL_FILES_CODE)
+        } catch (_: Exception) {
+            act.startActivityForResult(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), ALL_FILES_CODE)
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray): Boolean {
@@ -348,6 +373,11 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode == ALL_FILES_CODE) {
+            pendingAllFiles?.success(permissionState("files"))
+            pendingAllFiles = null
+            return true
+        }
         if (requestCode == AppsAdapter.INSTALL_PERMISSION_CODE) {
             apps.onInstallPermissionResult()
             return true
@@ -383,6 +413,7 @@ class PtpPlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
     }
 
     companion object {
+        private const val ALL_FILES_CODE = 0x5057
         private const val PICK_CODE = 0x5055
     }
 }

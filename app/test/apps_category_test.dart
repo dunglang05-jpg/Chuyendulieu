@@ -30,4 +30,13 @@ void main() {
     // iPhone receiver (or an older app without the category): not in the plan.
     expect(migrationPlan(sender, _caps('ios', 'receiver', ['photos'])), isNot(contains('apps')));
   });
+
+  test('files: Android sends (All files access), iPhone can only receive', () {
+    final info = categoryRegistry.firstWhere((c) => c.id == 'files');
+    expect(info.forPlatform('android').export, SupportStatus.permissionRequired);
+    expect(info.forPlatform('ios').export, SupportStatus.unsupported);
+    expect(info.forPlatform('ios').import, SupportStatus.supported);
+    final android = _caps('android', 'sender', ['files']);
+    expect(migrationPlan(android, _caps('ios', 'receiver', ['files'])), contains('files'));
+  });
 }

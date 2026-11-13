@@ -189,6 +189,9 @@ public class PtpPlatformPlugin: NSObject, FlutterPlugin {
       // No public API to read the Music library files or write into it: user-picked files only, received into Files.
       ["id": "audio", "export": true, "import": true, "status": "partial", "importStatus": "partial"],
       ["id": "calendar", "export": false, "import": false, "status": "unsupported", "importStatus": "unsupported"],
+      // "Toàn bộ tệp": an iPhone cannot read other apps' files, but can receive them into Files.
+      ["id": "files", "export": false, "import": true, "status": "partial", "importStatus": "supported"],
+      ["id": "apps", "export": false, "import": false, "status": "unsupported", "importStatus": "unsupported"],
     ]
     var sys = utsname()
     uname(&sys)

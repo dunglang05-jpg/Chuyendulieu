@@ -169,8 +169,10 @@ class MediaAdapter(private val context: Context) {
      * Moves a verified file from the app inbox into the shared collection under …/PhoneTransferPro.
      * IS_PENDING hides the item until the copy is complete, so a crash never leaves a half file visible.
      */
-    fun importFile(src: File, cat: String, name: String, mime: String?): Map<String, Any?> {
-        val (collection, base) = destination(cat)
+    fun importFile(src: File, cat: String, name: String, mime: String?, subdir: String? = null): Map<String, Any?> {
+        val (collection, base0) = destination(cat)
+        // "files": keep the sender's folder layout under Download/PhoneTransferPro/Bộ nhớ/…
+        val base = if (subdir.isNullOrEmpty()) base0 else "$base0/${sanitize(subdir)}"
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             if (mime != null) put(MediaStore.MediaColumns.MIME_TYPE, mime)
